@@ -1,0 +1,2 @@
+# AutoMax
+Automatic Maximal Coverage
