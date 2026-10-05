@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Project | **AutoMaX**, package and CLI shortform **`amx`** |
-| Doc version | 0.1 (handoff), 2026-10-05 |
+| Doc version | 0.1.1 (handoff + domain-neutral wording, D17), 2026-10-05. Open questions: `docs/OQ.md`. Build plan: `docs/ROLLER.md`. |
 | Audience | Claude Code (builder) and the owner (decision-maker) |
 | Status | Phase A design locked for build. Phase B is an interface contract only. |
 | One-liner | Given a labelled dataset, a task spec and acceptable risk bands, Claude Code designs an **LLM-free-at-inference** pipeline (any mix of classical ML / NLP / DL / CV / stats), certifies thresholds and coverage per band, and hands the unresolved residual, with reasons, to a later LLM phase. |
@@ -80,7 +80,7 @@ The product is a **certified risk-coverage frontier plus a frozen, deterministic
 | Phase | What | Status |
 |---|---|---|
 | **A** (this build) | Design and certify the non-LLM pipeline ("Set A"); characterize and hand off the residual ("Set B"). | Build now |
-| **B** (later) | Consume the manifest; design the LLM-side treatment of Set B: retrieval of exemplars, rubric injection, candidate-set restriction, self-consistency, tool use, etc. | Out of scope. Only the manifest contract (section 10.5) is in scope. |
+| **B** (later) | Consume the manifest; design the LLM-side handling of Set B: retrieval of exemplars, rubric injection, candidate-set restriction, self-consistency, tool use, etc. | Out of scope. Only the manifest contract (section 10.5) is in scope. |
 
 ### 1.3 "LLM-free at inference" means
 
@@ -154,7 +154,7 @@ One harness, many tasks. The table gives defaults. Every default is overridable 
 | Regression | row | `1[abs error > τ_tol]` | interval width, quantile spread, ensemble variance | **R1** |
 | Forecasting | series × horizon | `1[abs error > τ_tol]` | interval width from backtest residuals | **R1** (weaker guarantee, see 7.5) |
 | Extraction / tagging | field or span | `1 − match` (exact or F1) | token/CRF marginals, extractor agreement, validators | **R1** (field-level) |
-| Anomaly / triage | row ("clear as normal") | missed positive among auto-cleared | anomaly score | **R1** |
+| Anomaly detection | row (commit as "normal") | missed anomaly among units committed as normal | anomaly score | **R1** |
 | Multi-label / set-valued | row | false-negative proportion | per-label probabilities, set size | R2 |
 | Ranking / retrieval | query | `1 − recall@k` | score gap, candidate-set size | R2 |
 | Detection / segmentation | object or region | `1 − 1[IoU ≥ τ and class right]` | box/mask scores, mask stability | R2 |
@@ -306,7 +306,7 @@ task:
   commit_unit: row
   loss:
     kind: builtin                    # builtin | custom
-    name: zero_one                   # zero_one | err_gt_tol | one_minus_f1 | miss_among_cleared
+    name: zero_one                   # zero_one | err_gt_tol | one_minus_f1 | missed_anomaly
     params: {}
     # custom: {kind: custom, path: losses/my_loss.py, fn: loss}
 bands:
@@ -465,7 +465,7 @@ The agent sees **dev OOF metrics only**. It never sees calibration or sealed met
 | `verifier_failures` | invariants violated |
 | `gold` | if known (never exposed for sealed to agents) |
 
-Plus `taxonomy.md` (failure modes, prevalence, example ids, recommended treatment as *hypotheses*), `summary.json` (counts per tier, reason, cluster), `interface.md` (how Phase B reads it). Important note for Phase B: **an LLM's accuracy on Set B is not its overall accuracy.** Set B is selected by Phase A as the hard tail.
+Plus `taxonomy.md` (failure modes, frequency, example ids, recommended handling as *hypotheses*), `summary.json` (counts per tier, reason, cluster), `interface.md` (how Phase B reads it). Important note for Phase B: **an LLM's accuracy on Set B is not its overall accuracy.** Set B is selected by Phase A as the hard tail.
 
 ### 6.7 Ledger (SQLite)
 
@@ -577,7 +577,7 @@ Per-class or per-slice risk bounds (unless 7.10 enables and satisfies them), per
 
 - Range: `ℓ ∈ [0,1]`; `ℓ(y, y) = 0`; check on gold-vs-gold and random pairs.
 - Monotonicity (set-valued families only): `ℓ` non-increasing as the inclusion threshold grows. Selective families need no monotonicity (LTT).
-- Sensitivity report: histogram of `ℓ` on baseline predictions. Warn if a fractional loss has more than 95% mass at `{0, 1}`, or if a tolerance `τ_tol` makes `ℓ` nearly constant.
+- Loss-distribution report: histogram of `ℓ` on baseline predictions. Warn if a fractional loss has more than 95% mass at `{0, 1}`, or if a tolerance `τ_tol` makes `ℓ` nearly constant.
 - Custom losses or overridden family defaults require `--confirm-loss` (human).
 - Unbounded losses may be squashed by a monotone map (for example `arctan`), but then the band is in squashed units. State that in the report.
 
@@ -734,7 +734,7 @@ Up to 4 proposer subagents with `isolation: worktree` initially; evaluator jobs 
 
 Per family template in `programs/`: objective, allowed files, forbidden files, edit grammar, hypothesis format, acceptance rule, failure handling, stop rules, the "never stop to ask" clause for batch sessions, and the "never touch vault/protected core" clause. This file is the main lever on agent behavior; keep it short and exact.
 
-### 9.8 A/B protocol (T2)
+### 9.8 A/B procedure (T2)
 
 Equal experiment budgets (initial: 150), 5 seeds per backend. Compare certified coverage on sealed (via warden) and the OOF fitness trajectory. Paired bootstrap across seeds. Report experiments-to-90%-of-final.
 
@@ -752,12 +752,12 @@ Assigned to every `RESIDUAL` unit. Keep all flags; pick a primary by priority (t
 
 | Code | Detector (initial) | Ground truth for T3 | Phase B hypothesis (to be validated, not assumed) |
 |---|---|---|---|
-| `constraint_violation` | any verifier fired | injected violations | repair or human; LLM only as second opinion |
+| `constraint_violation` | any verifier fired | injected violations | repair or human; LLM only as a cross-check |
 | `novel` | OOD score > q99 of in-distribution calibration scores (kNN distance in embedding/feature space, k = 10; isolation forest for tabular) | CLINC150 out-of-scope | LLM zero-shot may help; flag possible taxonomy gap |
 | `sparse_support` | nearest class/region has `< 30` training units | rare classes (Covertype minority) | LLM few-shot with retrieved exemplars may help |
 | `noisy_gold` | diverse-ensemble consensus (≥ 80% members, mean confidence ≥ 0.9) disagrees with gold; OOF self-confidence of gold ≤ 0.1 | injected label flips | audit labels before any LLM scoring; do not send to LLM |
 | `disagreement` | diverse-ensemble mutual information > q90 (epistemic) | synthetic dataset-shift sets | more data or ensembling; LLM tie-breaker maybe |
-| `ambiguous` | calibrated candidate set of size 2 to 3 with stable membership; for regression: wide but members agree | CIFAR-10H human-label entropy | LLM adjudication over the candidate set with a rubric |
+| `ambiguous` | calibrated candidate set of size 2 to 3 with stable membership; for regression: wide but members agree | CIFAR-10H human-label entropy | LLM selection from the candidate set with a rubric |
 | `irreducible` | predicted distribution ≈ prior (KL below threshold); interval width ≈ marginal width; scorer without signal | Adult (expected dominant) | **do not send to an LLM**; accept risk, human, or collect features |
 
 Priority order: `constraint_violation > novel > sparse_support > noisy_gold > disagreement > ambiguous > irreducible`.
@@ -777,7 +777,7 @@ A Verifier node abstains with `constraint_violation` on violation (or applies a 
 ### 10.4 Analyst procedure (design-time Claude, read-only)
 
 Input: a harness-produced sample file (≤ 200 residual units, stratified by primary reason and cluster) with signals and nearest training neighbours. **No vault access.**
-Output: `handoff/taxonomy.md` with failure-mode ids, definitions, **deterministic tagging rules** (regex, embedding-cluster, feature predicates), example ids, and `treatment_hypothesis ∈ {llm, human, none, collect_data}` with confidence `{low, med, high}`. The harness then tags all residual units with the rules and counts prevalence. The analyst may not change thresholds, graphs or the certificate.
+Output: `handoff/taxonomy.md` with failure-mode ids, definitions, **deterministic tagging rules** (regex, embedding-cluster, feature predicates), example ids, and `handling_hypothesis ∈ {llm, human, none, collect_data}` with confidence `{low, med, high}`. The harness then tags all residual units with the rules and counts units per failure mode. The analyst may not change thresholds, graphs or the certificate.
 
 ### 10.5 Phase B interface contract (manifest v1)
 
@@ -816,7 +816,7 @@ Plugin skills are namespaced (for example `/amx:amx-search`). Keep each `SKILL.m
 | `amx-baseline` | model | build baseline graphs; run B0/B1/B2 |
 | `amx-search` | **user only** (`disable-model-invocation: true`) | bounded ratchet session per `program.md`; never certifies |
 | `amx-operator-author` | model | how to write an operator and pass contract tests |
-| `amx-reasons` | model | run detectors; analyst protocol |
+| `amx-reasons` | model | run detectors; analyst procedure |
 | `amx-report` | model | assemble `bands.md` from JSON; no new numbers |
 | `amx-certify` | **user only** | documents the human step `amx certify --freeze` in a separate shell; the skill itself must not run it |
 | `amx-ledger` | model | log hypotheses and outcomes; warm start |
@@ -1013,13 +1013,13 @@ One dataset per task family, spread across domains. Loaders live in `datasets/<n
 
 | Dataset | Family | Commit unit / ℓ | Domain | What it proves | Notes | Wave |
 |---|---|---|---|---|---|---|
-| Adult (UCI) | classification (tabular) | row / 0-1 | social, census | mixed types; substantial irreducible noise; negative control for LLM-suitability; inject label flips for `noisy_gold` | VERIFY license | 1 |
+| Adult (UCI) | classification (tabular) | row / 0-1 | social, census | mixed types; substantial irreducible noise; known-negative check for LLM-suitability; inject label flips for `noisy_gold` | VERIFY license | 1 |
 | California Housing | regression | row / error > tol | housing, geo | heteroscedastic noise; target piles up at a cap (the profiler must notice); interval-width abstention | via scikit-learn; VERIFY | 1 |
 | BANKING77 | classification (text) | row / 0-1 | customer support | about 13,000 requests across 77 closely related intents, official test split of 3,080: confusable classes, candidate sets, per-class feasibility limit. Public LLM-side comparators exist (llm-scorekit, third-party Jev tests) for Phase B. | VERIFY license | 1 |
 | CIFAR-10 + CIFAR-10H | classification (image) | row / 0-1 | vision | human label counts (about 50 judgments per image) on the 10,000 test images: ambiguity ground truth | CIFAR-10H is **CC BY-NC-SA 4.0**: research/internal evaluation only | 1 |
-| GIFT-Eval **or** Monash subset | forecasting | series × horizon / error > tol | multi-domain | GIFT-Eval: 23 datasets, 7 domains, 10 frequencies, test windows strictly after training, a leaderboard type for agentic systems. Monash: open archive with statistical, ML and DL baselines. | GIFT-Eval repo is research-use only; choose per open decision O4 | 1 |
+| GIFT-Eval **or** Monash subset | forecasting | series × horizon / error > tol | multi-domain | Subset with no single archive domain above one third. GIFT-Eval: 23 datasets, 7 domains, 10 frequencies, test windows strictly after training, a leaderboard type for agentic systems. Monash: open archive with statistical, ML and DL baselines. | GIFT-Eval repo is research-use only; choose per open decision O4 | 1 |
 | CORD | extraction | field / 1 − match | receipts, finance | images with box-level OCR text and multi-level semantic labels; field-level commit; `independence_unit: group:doc_id` | **CC BY 4.0** | 1 |
-| ADBench subset | anomaly | row / missed positive among cleared | multi-domain | 57 datasets, 30 algorithms; no unsupervised algorithm statistically dominates, which is the case for automatic selection | code BSD-2; check each dataset's source | 1 |
+| ADBench subset | anomaly | row / missed anomaly among committed-normal | multi-domain | 57 datasets, 30 algorithms; no unsupervised algorithm statistically dominates, which is the case for automatic selection | code BSD-2; check each dataset's source. Pin the subset (OQ); no single ADBench category above one third of it | 1 |
 | CLINC150 | classification (text) | row / 0-1 | dialog | 150 in-scope intents plus 1,000 out-of-scope test queries: `novel` ground truth | VERIFY license | 2 |
 | BeyondArena (TabArena) | classification / regression | row | multi-domain | IID, temporal and grouped tasks: shows where certificates fail under shift and exercises the regime audit | | 2 |
 | Covertype | classification (tabular) | row / 0-1 | geo, ecology | 581k rows, 7 classes, one class under 1%: `sparse_support`, scale | VERIFY license | 2 |
@@ -1037,7 +1037,7 @@ Sizes: S/M/L/XL are relative effort. **Do not skip a gate.**
 
 - [ ] Repo scaffold: `uv`, ruff, mypy, pytest, hypothesis, pre-commit, CI, Makefile targets (section 15).
 - [ ] `amx.spec`: pydantic models, validators, JSON-schema export to `docs/schemas/`.
-- [ ] `amx.loss`: builtins `zero_one`, `err_gt_tol` (absolute or relative tolerance), `one_minus_f1`, `miss_among_cleared`; custom loader; validators (7.9).
+- [ ] `amx.loss`: builtins `zero_one`, `err_gt_tol` (absolute or relative tolerance), `one_minus_f1`, `missed_anomaly`; custom loader; validators (7.9).
 - [ ] `amx.data`: parquet/csv/jsonl loaders, `UnitFrame`, content-hash cache.
 - [ ] `amx.split`: regimes `iid`, `grouped`, `temporal`; hash-locked manifests; vault client (`local_dir` mode only at this stage).
 - [ ] `amx.cert`: binomial and Hoeffding–Bentkus p-values, `n_min`, fixed-sequence LTT, δ budgeting, nesting assertion, certify-call counter, guarantee objects, `bands.json` writer.
@@ -1081,7 +1081,7 @@ Sizes: S/M/L/XL are relative effort. **Do not skip a gate.**
 
 - [ ] Verifiers and invariant discovery (10.3).
 - [ ] Decomposed uncertainty via diverse ensembles; all seven reason detectors.
-- [ ] Analyst protocol and deterministic taxonomy tagging; manifest v1 writer, `summary.json`, `interface.md`.
+- [ ] Analyst procedure and deterministic taxonomy tagging; manifest v1 writer, `summary.json`, `interface.md`.
 - [ ] Extraction (field-level) and anomaly end to end.
 
 **Gate A3:** T3 passes. T1 for extraction and anomaly. **Manifest v1 frozen**, which unblocks Phase B.
@@ -1125,7 +1125,7 @@ Sizes: S/M/L/XL are relative effort. **Do not skip a gate.**
 
 | Risk | Why it bites | Mitigation |
 |---|---|---|
-| **ℓ is the attack surface** | A sloppy loss (tolerance too tight, exact match on fuzzy fields) makes certificates meaningless | validators (7.9); `--confirm-loss`; sensitivity report |
+| **ℓ is the attack surface** | A sloppy loss (tolerance too tight, exact match on fuzzy fields) makes certificates meaningless | validators (7.9); `--confirm-loss`; loss-distribution report |
 | **Wrong split regime** | Time, groups, near-duplicates silently inflate coverage | exchangeability audit (8.2); regime downgrade with truthful guarantee type |
 | **Structure search overfits dev** | More degrees of freedom than HPO | OOF + noise margin; Thresholdout-style switch; sealed folds; complexity penalty |
 | **Composite and clustered units** | Field-level risk compounds at document level | `independence_unit`; group-level certification; report both |
@@ -1181,6 +1181,7 @@ Sizes: S/M/L/XL are relative effort. **Do not skip a gate.**
 | D14 | Long runs are driven by an external supervisor with bounded `claude -p` batches, not by a single session. |
 | D15 | Forecasting selective guarantee is labelled `holdout_empirical`; ACI provides long-run interval coverage only. |
 | D16 | No MCP server in v1; CLI plus JSON files. |
+| D17 | Domain-neutral vocabulary in contracts and docs (2026-10-05): anomaly family wording, loss builtin `miss_among_cleared` → `missed_anomaly`, taxonomy field `treatment_hypothesis` → `handling_hypothesis`, plus wording in 1.2, 6.6, 7.9, 9.8, 10.1, 10.4, 11.2, 13, 14, 16. Multi-domain archives are subset with a one-third cap per archive domain. Structural follow-ups (anomaly commit direction, ADBench subset) are open in `docs/OQ.md`. |
 
 ---
 
