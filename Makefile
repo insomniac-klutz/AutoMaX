@@ -1,7 +1,7 @@
 UV ?= uv
 RUN = $(UV) run --extra dev
 
-.PHONY: help sync lint fmt typecheck test check stat e2e-small schemas contract redteam plugin-validate portability
+.PHONY: help sync lint fmt typecheck test check stat e2e-small gate-data schemas contract redteam plugin-validate portability
 
 help:
 	@echo "make check      ruff + mypy + unit + property tests"
@@ -34,8 +34,12 @@ stat:
 e2e-small:
 	$(RUN) pytest tests/e2e -q -m "not network"
 
+gate-data:
+	$(RUN) pytest tests/e2e -q -m network
+
 schemas:
 	$(RUN) python -m amx.spec.schema --write
+	$(RUN) python -m amx.report.schema --write
 
 contract redteam plugin-validate portability:
 	@echo "'make $@' arrives in a later milestone (see docs/ROLLER.md)"; exit 1
