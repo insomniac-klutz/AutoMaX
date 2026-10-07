@@ -1,0 +1,25 @@
+spec_version: 1
+name: electricity-client-diagnostic-b
+data:
+  uri: loader_b.py
+  format: custom
+  unit_id: unit_id
+  inputs:
+    - {name: anchor, kind: numeric}
+    - {name: vol, kind: numeric}
+    - {name: horizon, kind: numeric}
+  target: {name: target, kind: series}
+  time_column: origin_time
+task:
+  family: forecasting
+  commit_unit: series_horizon
+  loss: {kind: builtin, name: err_gt_tol, params: {tol: 0.10, relative: true, abs_floor: 1.0}}
+  forecast: {horizons: [1, 24], max_lag: 24}
+bands:
+  alphas: [0.20, 0.30]
+  policies: [auto, audit]
+  delta: 0.10
+splits:
+  regime: temporal
+  fractions: {dev: 0.6, calib: 0.2, sealed: 0.2}
+  seed: 20261007
