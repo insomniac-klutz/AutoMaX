@@ -1,0 +1,716 @@
+{
+  "$defs": {
+    "BandsSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "alphas": {
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1,
+          "title": "Alphas",
+          "type": "array"
+        },
+        "delta": {
+          "default": 0.1,
+          "title": "Delta",
+          "type": "number"
+        },
+        "policies": {
+          "items": {
+            "$ref": "#/$defs/Policy"
+          },
+          "minItems": 1,
+          "title": "Policies",
+          "type": "array"
+        },
+        "watch_slices": {
+          "items": {
+            "$ref": "#/$defs/WatchSlice"
+          },
+          "title": "Watch Slices",
+          "type": "array"
+        }
+      },
+      "required": [
+        "alphas",
+        "policies"
+      ],
+      "title": "BandsSpec",
+      "type": "object"
+    },
+    "BudgetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_max_usd": {
+          "default": 150.0,
+          "minimum": 0,
+          "title": "Agent Max Usd",
+          "type": "number"
+        },
+        "cpu_cores": {
+          "default": 16,
+          "minimum": 1,
+          "title": "Cpu Cores",
+          "type": "integer"
+        },
+        "gpus": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Gpus",
+          "type": "integer"
+        },
+        "max_experiments": {
+          "default": 300,
+          "minimum": 1,
+          "title": "Max Experiments",
+          "type": "integer"
+        },
+        "wall_clock_hours": {
+          "default": 4.0,
+          "exclusiveMinimum": 0,
+          "title": "Wall Clock Hours",
+          "type": "number"
+        }
+      },
+      "title": "BudgetSpec",
+      "type": "object"
+    },
+    "BuiltinLoss": {
+      "enum": [
+        "zero_one",
+        "err_gt_tol",
+        "one_minus_f1",
+        "missed_anomaly",
+        "anomaly_cost"
+      ],
+      "title": "BuiltinLoss",
+      "type": "string"
+    },
+    "CallPolicy": {
+      "description": "How certify calls share the failure budget (OQ Q1).",
+      "enum": [
+        "single",
+        "preregistered",
+        "sliced"
+      ],
+      "title": "CallPolicy",
+      "type": "string"
+    },
+    "CertMode": {
+      "enum": [
+        "fixed_sequence"
+      ],
+      "title": "CertMode",
+      "type": "string"
+    },
+    "CertSpec": {
+      "additionalProperties": false,
+      "description": "Certification parameters, fixed before calibration and hashed at split (C15).",
+      "properties": {
+        "aci_gamma": {
+          "default": 0.005,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Aci Gamma",
+          "type": "number"
+        },
+        "call_policy": {
+          "$ref": "#/$defs/CallPolicy",
+          "default": "single"
+        },
+        "grid_max": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "title": "Grid Max",
+          "type": "number"
+        },
+        "grid_min": {
+          "default": 0.0001,
+          "exclusiveMinimum": 0,
+          "title": "Grid Min",
+          "type": "number"
+        },
+        "grid_size": {
+          "default": 200,
+          "maximum": 5000,
+          "minimum": 10,
+          "title": "Grid Size",
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/CertMode",
+          "default": "fixed_sequence"
+        },
+        "start_factor": {
+          "default": 1.25,
+          "minimum": 1.0,
+          "title": "Start Factor",
+          "type": "number"
+        },
+        "tau0": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tau0"
+        }
+      },
+      "title": "CertSpec",
+      "type": "object"
+    },
+    "CommitUnit": {
+      "enum": [
+        "row",
+        "series_horizon",
+        "field",
+        "span",
+        "query",
+        "object"
+      ],
+      "title": "CommitUnit",
+      "type": "string"
+    },
+    "ConstraintsSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_gpu": {
+          "default": false,
+          "title": "Allow Gpu",
+          "type": "boolean"
+        },
+        "allow_pretrained_encoders": {
+          "default": true,
+          "title": "Allow Pretrained Encoders",
+          "type": "boolean"
+        },
+        "forbidden_inputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Inputs",
+          "type": "array"
+        },
+        "interpretable_only": {
+          "default": false,
+          "title": "Interpretable Only",
+          "type": "boolean"
+        },
+        "max_apply_ms_per_unit": {
+          "default": 50.0,
+          "exclusiveMinimum": 0,
+          "title": "Max Apply Ms Per Unit",
+          "type": "number"
+        },
+        "max_model_mb": {
+          "default": 500.0,
+          "exclusiveMinimum": 0,
+          "title": "Max Model Mb",
+          "type": "number"
+        }
+      },
+      "title": "ConstraintsSpec",
+      "type": "object"
+    },
+    "DataFormat": {
+      "enum": [
+        "parquet",
+        "csv",
+        "jsonl",
+        "image_folder",
+        "custom"
+      ],
+      "title": "DataFormat",
+      "type": "string"
+    },
+    "DataSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/DataFormat"
+        },
+        "group_columns": {
+          "description": "entity ids that must not straddle folds",
+          "items": {
+            "type": "string"
+          },
+          "title": "Group Columns",
+          "type": "array"
+        },
+        "independence_unit": {
+          "default": "unit",
+          "description": "unit | group:<col> (see 7.5)",
+          "title": "Independence Unit",
+          "type": "string"
+        },
+        "inputs": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/InputSpec"
+              },
+              "type": "array"
+            },
+            {
+              "const": "infer",
+              "type": "string"
+            }
+          ],
+          "default": "infer",
+          "title": "Inputs"
+        },
+        "series_columns": {
+          "description": "temporal entity ids; a series may span folds in time (D19)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Series Columns",
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetSpec"
+        },
+        "time_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Column"
+        },
+        "unit_id": {
+          "minLength": 1,
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "uri": {
+          "description": "file, directory, or loader module (format custom)",
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "format",
+        "unit_id",
+        "target"
+      ],
+      "title": "DataSpec",
+      "type": "object"
+    },
+    "Family": {
+      "enum": [
+        "classification",
+        "regression",
+        "forecasting",
+        "extraction",
+        "anomaly",
+        "multilabel",
+        "ranking",
+        "detection"
+      ],
+      "title": "Family",
+      "type": "string"
+    },
+    "ForecastOrigins": {
+      "enum": [
+        "rolling",
+        "fixed"
+      ],
+      "title": "ForecastOrigins",
+      "type": "string"
+    },
+    "ForecastSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "horizons": {
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Horizons",
+          "type": "array"
+        },
+        "max_lag": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Lag",
+          "type": "integer"
+        },
+        "origin_stride": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Origin Stride",
+          "type": "integer"
+        },
+        "origins": {
+          "$ref": "#/$defs/ForecastOrigins",
+          "default": "rolling"
+        }
+      },
+      "required": [
+        "horizons"
+      ],
+      "title": "ForecastSpec",
+      "type": "object"
+    },
+    "Fractions": {
+      "additionalProperties": false,
+      "description": "All three keys are required when fractions are given (C8).",
+      "properties": {
+        "calib": {
+          "title": "Calib",
+          "type": "number"
+        },
+        "dev": {
+          "title": "Dev",
+          "type": "number"
+        },
+        "sealed": {
+          "title": "Sealed",
+          "type": "number"
+        }
+      },
+      "required": [
+        "dev",
+        "calib",
+        "sealed"
+      ],
+      "title": "Fractions",
+      "type": "object"
+    },
+    "InputKind": {
+      "enum": [
+        "text",
+        "numeric",
+        "categorical",
+        "timestamp",
+        "image",
+        "audio",
+        "series",
+        "infer"
+      ],
+      "title": "InputKind",
+      "type": "string"
+    },
+    "InputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/InputKind"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "InputSpec",
+      "type": "object"
+    },
+    "LossKind": {
+      "enum": [
+        "builtin",
+        "custom"
+      ],
+      "title": "LossKind",
+      "type": "string"
+    },
+    "LossSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "fn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fn"
+        },
+        "kind": {
+          "$ref": "#/$defs/LossKind",
+          "default": "builtin"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BuiltinLoss"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        }
+      },
+      "title": "LossSpec",
+      "type": "object"
+    },
+    "Policy": {
+      "enum": [
+        "auto",
+        "audit"
+      ],
+      "title": "Policy",
+      "type": "string"
+    },
+    "PriorsSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "invariants": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Invariants",
+          "type": "array"
+        },
+        "label_hierarchy": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label Hierarchy"
+        }
+      },
+      "title": "PriorsSpec",
+      "type": "object"
+    },
+    "Regime": {
+      "enum": [
+        "auto",
+        "iid",
+        "grouped",
+        "temporal",
+        "blocked"
+      ],
+      "title": "Regime",
+      "type": "string"
+    },
+    "SplitsSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "embargo": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "distinct time steps dropped between temporal folds; default derives from forecast horizons and max_lag",
+          "title": "Embargo"
+        },
+        "fractions": {
+          "$ref": "#/$defs/Fractions"
+        },
+        "max_certify_calls": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Max Certify Calls",
+          "type": "integer"
+        },
+        "oof_folds": {
+          "default": 5,
+          "maximum": 20,
+          "minimum": 2,
+          "title": "Oof Folds",
+          "type": "integer"
+        },
+        "regime": {
+          "$ref": "#/$defs/Regime",
+          "default": "auto"
+        },
+        "seed": {
+          "default": 1337,
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "title": "SplitsSpec",
+      "type": "object"
+    },
+    "TargetKind": {
+      "enum": [
+        "categorical",
+        "numeric",
+        "spans",
+        "set",
+        "series"
+      ],
+      "title": "TargetKind",
+      "type": "string"
+    },
+    "TargetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/TargetKind"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "TargetSpec",
+      "type": "object"
+    },
+    "TaskSection": {
+      "additionalProperties": false,
+      "properties": {
+        "commit_unit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommitUnit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "family": {
+          "$ref": "#/$defs/Family"
+        },
+        "forecast": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ForecastSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "loss": {
+          "$ref": "#/$defs/LossSpec"
+        }
+      },
+      "required": [
+        "family"
+      ],
+      "title": "TaskSection",
+      "type": "object"
+    },
+    "WatchSlice": {
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "description": "a data column, or 'target'",
+          "minLength": 1,
+          "title": "By",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "by"
+      ],
+      "title": "WatchSlice",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "bands": {
+      "$ref": "#/$defs/BandsSpec"
+    },
+    "budget": {
+      "$ref": "#/$defs/BudgetSpec"
+    },
+    "cert": {
+      "$ref": "#/$defs/CertSpec"
+    },
+    "constraints": {
+      "$ref": "#/$defs/ConstraintsSpec"
+    },
+    "data": {
+      "$ref": "#/$defs/DataSpec"
+    },
+    "name": {
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "priors": {
+      "$ref": "#/$defs/PriorsSpec"
+    },
+    "spec_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Spec Version",
+      "type": "integer"
+    },
+    "splits": {
+      "$ref": "#/$defs/SplitsSpec"
+    },
+    "task": {
+      "$ref": "#/$defs/TaskSection"
+    }
+  },
+  "required": [
+    "name",
+    "data",
+    "task",
+    "bands"
+  ],
+  "title": "TaskSpec",
+  "type": "object"
+}

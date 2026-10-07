@@ -1,0 +1,63 @@
+"""TaskSpec models, loading, hashing and schema export."""
+
+from amx.spec.enums import (
+    BuiltinLoss,
+    CallPolicy,
+    CommitUnit,
+    DataFormat,
+    Family,
+    InputKind,
+    LossKind,
+    Policy,
+    Regime,
+    TargetKind,
+)
+from amx.spec.hashing import canonical_json, content_hash, sha256_hex
+from amx.spec.loader import SpecError, dump_taskspec, load_taskspec, parse_taskspec, resolve_uri
+from amx.spec.models import (
+    BandsSpec,
+    CertSpec,
+    DataSpec,
+    ForecastSpec,
+    Fractions,
+    InputSpec,
+    LossSpec,
+    SplitsSpec,
+    TargetSpec,
+    TaskSection,
+    TaskSpec,
+    WatchSlice,
+)
+
+__all__ = [
+    "BandsSpec",
+    "BuiltinLoss",
+    "CallPolicy",
+    "CertSpec",
+    "CommitUnit",
+    "DataFormat",
+    "DataSpec",
+    "Family",
+    "ForecastSpec",
+    "Fractions",
+    "InputKind",
+    "InputSpec",
+    "LossKind",
+    "LossSpec",
+    "Policy",
+    "Regime",
+    "SpecError",
+    "SplitsSpec",
+    "TargetKind",
+    "TargetSpec",
+    "TaskSection",
+    "TaskSpec",
+    "WatchSlice",
+    "canonical_json",
+    "content_hash",
+    "dump_taskspec",
+    "load_taskspec",
+    "parse_taskspec",
+    "resolve_uri",
+    "sha256_hex",
+]

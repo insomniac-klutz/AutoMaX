@@ -1,0 +1,5 @@
+spec_version: 1
+name: event-anomaly
+data: {uri: data/events.parquet, format: parquet, unit_id: id, target: {name: is_anomaly, kind: categorical}}
+task: {family: anomaly, commit_unit: row, loss: {kind: builtin, name: anomaly_cost, params: {normal_label: 0, cost_miss: 1.0, cost_false_alarm: 0.2}}}
+bands: {alphas: [0.01, 0.05], policies: [auto, audit], delta: 0.10}

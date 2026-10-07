@@ -1,0 +1,5 @@
+spec_version: 1
+name: value-regression
+data: {uri: data/value.parquet, format: parquet, unit_id: id, target: {name: value, kind: numeric}}
+task: {family: regression, commit_unit: row, loss: {kind: builtin, name: err_gt_tol, params: {tol: 0.25, relative: true}}}
+bands: {alphas: [0.02, 0.05, 0.10], policies: [auto, audit, audit], delta: 0.10}

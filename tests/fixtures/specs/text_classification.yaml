@@ -1,0 +1,5 @@
+spec_version: 1
+name: intents
+data: {uri: data/intents.parquet, format: parquet, unit_id: id, inputs: [{name: text, kind: text}], target: {name: label, kind: categorical}}
+task: {family: classification, commit_unit: row, loss: {kind: builtin, name: zero_one}}
+bands: {alphas: [0.01, 0.02, 0.05], policies: [auto, auto, audit], delta: 0.10}

@@ -1,0 +1,6 @@
+spec_version: 1
+name: series-forecast
+data: {uri: data/series.parquet, format: parquet, unit_id: row_id, time_column: ts, series_columns: [series_id], target: {name: y, kind: series}}
+task: {family: forecasting, commit_unit: series_horizon, loss: {kind: builtin, name: err_gt_tol, params: {tol: 0.10, relative: true}}, forecast: {horizons: [1, 7, 28], max_lag: 28}}
+splits: {regime: temporal}
+bands: {alphas: [0.05, 0.10], policies: [auto, audit], delta: 0.10}

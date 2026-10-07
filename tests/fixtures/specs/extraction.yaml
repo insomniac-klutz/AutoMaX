@@ -1,0 +1,6 @@
+spec_version: 1
+name: doc-fields
+data: {uri: data/fields.parquet, format: parquet, unit_id: field_id, group_columns: [doc_id], independence_unit: "group:doc_id", target: {name: value, kind: spans}}
+task: {family: extraction, commit_unit: field, loss: {kind: builtin, name: one_minus_f1}}
+splits: {regime: grouped}
+bands: {alphas: [0.01, 0.03], policies: [auto, audit], delta: 0.10}
