@@ -47,8 +47,16 @@ def synthetic(out: Path, reps: int, jobs: int) -> dict[str, Any]:
     }
 
 
-def dataset(name: str, out: Path, tag: str, resplits: int) -> dict[str, Any]:
-    spec = ROOT / "datasets" / name / "spec.yaml"
+def dataset(
+    name: str,
+    out: Path,
+    tag: str,
+    resplits: int,
+    *,
+    spec_file: str = "spec.yaml",
+    force: bool = False,
+) -> dict[str, Any]:
+    spec = ROOT / "datasets" / name / spec_file
     run_dir = out / "runs" / f"{name}-{tag}"
     t0 = time.time()
     split = runs.split(spec, run_dir)
@@ -56,7 +64,7 @@ def dataset(name: str, out: Path, tag: str, resplits: int) -> dict[str, Any]:
     feas = runs.profile_feasibility(run_dir)
     vault = LocalVault()
     token = issue_token(vault, run_dir.resolve().name)
-    cert = certify_run(run_dir, token=token)
+    cert = certify_run(run_dir, token=token, force=force)
     rep = runs.report(run_dir)
     t1 = t1_real_cheap(run_dir, token=token, resplits=resplits)
     return {
@@ -68,12 +76,13 @@ def dataset(name: str, out: Path, tag: str, resplits: int) -> dict[str, Any]:
         "feasibility": {
             "requires_force": feas.requires_force,
             "constant_risk": feas.constant_risk,
-            "noise_floor_estimate": feas.noise_floor_estimate,
+            "baseline_floor_estimate": feas.baseline_floor_estimate,
             "warnings": feas.warnings,
             "bands": [b.model_dump(mode="json") for b in feas.bands],
         },
         "certificate": {
             "guarantee": cert.guarantee.type.value,
+            "claims_certification": cert.claims_certification,
             "estimand": cert.guarantee.estimand,
             "p_value_family": cert.guarantee.p_value_family,
             "delta_per_band": cert.guarantee.delta_per_band,
@@ -104,8 +113,13 @@ def main() -> int:
     ap.add_argument("--reps", type=int, default=2000)
     ap.add_argument("--resplits", type=int, default=200)
     ap.add_argument("--jobs", type=int, default=4)
-    ap.add_argument("--skip-synthetic", action="store_true")
+    ap.add_argument("--skip-synthetic", action="store_true", help="partial run; exits 2")
     ap.add_argument("--datasets", default=",".join(DATASETS))
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="certify bands the dev profile marks infeasible (recorded as warnings)",
+    )
     args = ap.parse_args()
     configure()
     out: Path = args.out
@@ -115,7 +129,9 @@ def main() -> int:
     if not args.skip_synthetic:
         summary["synthetic"] = synthetic(out, args.reps, args.jobs)
     summary["datasets"] = [
-        dataset(n.strip(), out, tag, args.resplits) for n in args.datasets.split(",") if n.strip()
+        dataset(n.strip(), out, tag, args.resplits, force=args.force)
+        for n in args.datasets.split(",")
+        if n.strip()
     ]
     real_ok = all(
         d["t1_real_cheap"]["passed"] and not d["t1_real_cheap"]["gross_failure"]
@@ -123,8 +139,15 @@ def main() -> int:
     )
     summary["t1_real_cheap_passed"] = real_ok
     (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str) + "\n")
-    syn = summary.get("synthetic", {})
-    ok = real_ok and syn.get("t1_synth_passed", True) and syn.get("t1_forecast_passed", True)
+    if args.skip_synthetic:
+        return 2  # incomplete: not a gate verdict
+    syn = summary["synthetic"]
+    ok = (
+        real_ok
+        and syn["t1_synth_passed"]
+        and syn["t1_forecast_passed"]
+        and all(syn["certified_band_at_10000"].values())
+    )
     return 0 if ok else 1
 
 

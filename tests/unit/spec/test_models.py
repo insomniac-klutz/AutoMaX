@@ -95,7 +95,10 @@ def test_forecast_embargo_from_horizons() -> None:
         ({"data__independence_unit": "groups"}, "'unit' or 'group:<col>'"),
         ({"data__unit_id": "y"}, "unit_id and target"),
         ({"bands__watch_slices": [{"name": "s", "by": "nope"}]}, "unknown column"),
-        ({"constraints__forbidden_inputs": ["zzz"]}, "not inputs"),
+        ({"constraints__forbidden_inputs": ["a"]}, "listed as inputs"),
+        ({"cert__call_policy": "sliced"}, "not implemented in A0"),
+        ({"data__group_columns": ["b"]}, "independence_unit: group:<col>"),
+        ({"bands__watch_slices": [{"name": "s", "by": "id"}]}, "unit id"),
         ({"name": "Has Spaces"}, "should match pattern"),
         ({"extra_key": 1}, "Extra inputs"),
     ],
@@ -122,15 +125,18 @@ def test_anomaly_needs_named_loss_and_normal_label() -> None:
 
 
 def test_grouped_and_iid_group_rules() -> None:
-    raw = make(
-        splits__regime="iid",
-        data__group_columns=["b"],
-    )
+    raw = make(splits__regime="iid", data__group_columns=["b"], data__independence_unit="group:b")
     with pytest.raises(ValidationError, match="cannot have group_columns"):
         parse_taskspec(raw)
     raw["splits"]["regime"] = "grouped"
-    raw["data"]["independence_unit"] = "group:b"
     assert parse_taskspec(raw).data.independence_group == "b"
+    raw["splits"]["regime"] = "auto"  # auto + groups is fine once the unit is declared
+    assert parse_taskspec(raw).data.independence_group == "b"
+
+
+def test_target_cannot_be_a_role_column() -> None:
+    with pytest.raises(ValidationError, match="target cannot also be"):
+        parse_taskspec(make(data__time_column="y"))
 
 
 def test_old_version_key_rejected() -> None:

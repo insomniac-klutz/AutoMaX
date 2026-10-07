@@ -26,6 +26,14 @@ NEVER_CLAIMED: tuple[str, ...] = (
 )
 
 
+CLAIMING_TYPES = frozenset({GuaranteeType.PAC_HIGH_PROB, GuaranteeType.EXPECTATION})
+
+
+def claims_certification(gtype: GuaranteeType) -> bool:
+    """Whether a guarantee type may be described as a certified selective-risk bound (D23)."""
+    return gtype in CLAIMING_TYPES
+
+
 def guarantee_type_for(regime: Regime, family: Family) -> GuaranteeType:
     """Certifier selection for selective commits (7.1, Q6). The profiler resolves ``auto``."""
     if regime is Regime.AUTO:

@@ -37,6 +37,14 @@ def _emit(payload: Any) -> None:
     typer.echo(json.dumps(payload, indent=2, default=str))
 
 
+STATUS_WORDS = {"certified": "selected", "inherited": "inherited", "uncertified": "not_selected"}
+
+
+def status_word(status: str, claims: bool) -> str:
+    """Band status for output; without a certifying guarantee 'certified' is not used (D23)."""
+    return status if claims else STATUS_WORDS.get(status, status)
+
+
 def _refuse(exc: Exception) -> typer.Exit:
     typer.echo(f"refused: {exc}", err=True)
     return typer.Exit(EXIT_REFUSED)
@@ -102,16 +110,18 @@ def profile(
 def split(
     spec: SpecOpt,
     run: RunOpt,
-    run_id: Annotated[str | None, typer.Option("--run-id")] = None,
     allow_small: Annotated[bool, typer.Option("--allow-small")] = False,
 ) -> None:
-    """Hash-locked split: dev into the run dir, calib and sealed into the vault."""
+    """Hash-locked split: dev into the run dir, calib and sealed into the vault.
+
+    The run id is the run directory's name.
+    """
     from amx import runs
     from amx.spec.loader import SpecError
     from amx.split.errors import SplitError, VaultError
 
     try:
-        _emit(runs.split(spec, run, run_id=run_id, allow_small=allow_small))
+        _emit(runs.split(spec, run, allow_small=allow_small))
     except (SpecError, SplitError, VaultError, runs.RunError, ValueError) as exc:
         raise _refuse(exc) from exc
 
@@ -137,23 +147,39 @@ def certify(
     ] = False,
     token: TokenOpt = None,
     confirm_loss: ConfirmLossOpt = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="HUMAN: certify although bands look infeasible on dev")
+    ] = False,
 ) -> None:
     """WARDEN: certify the frozen artifact on the calibration fold (spends one certify call)."""
     from amx.loss.base import LossError
     from amx.split.errors import VaultError
     from amx.warden import TokenError, WardenError, certify_run, resolve_token
+    from amx.warden.ledger import PartitionUsedError
 
     if not freeze:
         raise _refuse(ValueError("certify spends a budgeted call; pass --freeze to confirm"))
     try:
-        cert = certify_run(run, token=resolve_token(token), confirm_loss=confirm_loss)
-    except (TokenError, WardenError, VaultError, LossError, FileNotFoundError) as exc:
+        cert = certify_run(run, token=resolve_token(token), confirm_loss=confirm_loss, force=force)
+    except (
+        TokenError,
+        WardenError,
+        VaultError,
+        LossError,
+        PartitionUsedError,
+        FileNotFoundError,
+    ) as exc:
         raise _refuse(exc) from exc
     _emit(
         {
             "guarantee": cert.guarantee.type.value,
+            "claims_certification": cert.claims_certification,
             "bands": [
-                {"alpha": b.alpha, "status": b.status.value, "tau_hat": b.tau_hat}
+                {
+                    "alpha": b.alpha,
+                    "status": status_word(b.status.value, cert.claims_certification),
+                    "tau_hat": b.tau_hat,
+                }
                 for b in cert.bands
             ],
             "warnings": cert.warnings,
@@ -197,6 +223,7 @@ def simulate(
     if not t1 or synthetic == real:
         raise _refuse(ValueError("use --t1 with exactly one of --synthetic or --real"))
     if real:
+        from amx.loss.base import LossError
         from amx.split.errors import VaultError
         from amx.warden import TokenError, WardenError, resolve_token, t1_real_cheap
 
@@ -210,7 +237,7 @@ def simulate(
                 seed=seed,
                 confirm_loss=confirm_loss,
             )
-        except (TokenError, WardenError, VaultError, FileNotFoundError) as exc:
+        except (TokenError, WardenError, VaultError, LossError, FileNotFoundError) as exc:
             raise _refuse(exc) from exc
         _emit(payload)
         if not payload["passed"]:
@@ -239,13 +266,22 @@ def simulate(
 
 
 @warden_app.command("issue-token")
-def issue_token_cmd(run: RunOpt) -> None:
-    """HUMAN: issue the freeze token for a run. Shown once; keep it out of agent environments."""
+def issue_token_cmd(
+    run: RunOpt,
+    rotate: Annotated[bool, typer.Option("--rotate", help="replace an existing token")] = False,
+) -> None:
+    """HUMAN: issue the freeze token for a run. Shown once; keep it out of agent environments.
+
+    In local_dir vault mode the token is a procedural gate, not a security boundary.
+    """
     from amx.split.vault import LocalVault
-    from amx.warden import issue_token
+    from amx.warden import TokenError, issue_token
 
     rid = run.resolve().name
-    typer.echo(issue_token(LocalVault(), rid))
+    try:
+        typer.echo(issue_token(LocalVault(), rid, rotate=rotate))
+    except TokenError as exc:
+        raise _refuse(exc) from exc
 
 
 def main() -> None:

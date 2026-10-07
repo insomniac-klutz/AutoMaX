@@ -115,12 +115,14 @@ def pre_profile(uf: UnitFrame, spec: TaskSpec) -> PreProfile:
     elif spec.data.group_columns:
         rec = Regime.GROUPED
         reasons.append("group columns are declared: units in a group are not independent")
-    elif groups:
-        rec = Regime.GROUPED
-        reasons.append(f"repeated high-cardinality id-like columns: {groups}")
     else:
         rec = Regime.IID
         reasons.append("no time or group structure detected")
+    if groups and not spec.data.group_columns:
+        warnings.append(
+            f"id-like columns {groups} repeat across units; if they identify entities, declare "
+            "them as group_columns with independence_unit group:<col> (regime grouped)"
+        )
     if times and rec is not Regime.TEMPORAL:
         warnings.append(f"time-like columns {times} found; consider regime temporal")
     if dup_units:

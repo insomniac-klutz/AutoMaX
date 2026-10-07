@@ -13,15 +13,16 @@ sync:
 	$(UV) sync --extra dev
 
 lint:
-	$(RUN) ruff check src tests datasets
-	$(RUN) ruff format --check src tests datasets
+	$(RUN) ruff check src tests datasets scripts
+	$(RUN) ruff format --check src tests datasets scripts
 
 fmt:
-	$(RUN) ruff format src tests datasets
-	$(RUN) ruff check --fix src tests datasets
+	$(RUN) ruff format src tests datasets scripts
+	$(RUN) ruff check --fix src tests datasets scripts
 
 typecheck:
 	$(RUN) mypy
+	$(RUN) mypy scripts
 
 test:
 	$(RUN) pytest tests/unit tests/property -q

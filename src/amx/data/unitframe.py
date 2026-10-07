@@ -8,6 +8,7 @@ from pandas dtypes (C11), and do not depend on row order.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -46,9 +47,16 @@ class Roles:
         return tuple(dict.fromkeys(cols))
 
     @classmethod
-    def from_spec(cls, data: DataSpec, columns: Sequence[str]) -> Roles:
-        """Roles from a DataSpec; ``inputs: infer`` takes every column not used by another role."""
+    def from_spec(
+        cls, data: DataSpec, columns: Sequence[str], forbidden: Sequence[str] = ()
+    ) -> Roles:
+        """Roles from a DataSpec.
+
+        ``inputs: infer`` takes every column not used by another role and not listed in
+        ``forbidden`` (the spec's ``constraints.forbidden_inputs``).
+        """
         reserved = {data.unit_id, data.target.name, *data.group_columns, *data.series_columns}
+        reserved.update(forbidden)
         if data.time_column is not None:
             reserved.add(data.time_column)
         names = data.input_names
@@ -82,8 +90,8 @@ class UnitFrame:
     # construction -----------------------------------------------------------------------
 
     @classmethod
-    def from_spec(cls, table: pa.Table, data: DataSpec) -> UnitFrame:
-        return cls(table, Roles.from_spec(data, table.column_names))
+    def from_spec(cls, table: pa.Table, data: DataSpec, forbidden: Sequence[str] = ()) -> UnitFrame:
+        return cls(table, Roles.from_spec(data, table.column_names, forbidden))
 
     @classmethod
     def from_pandas(cls, df: pd.DataFrame, roles: Roles) -> UnitFrame:
@@ -141,8 +149,11 @@ class UnitFrame:
         parts = [self._table.column(c).cast(pa.string()).fill_null("") for c in cols]
         if len(parts) == 1:
             return np.asarray(parts[0].to_numpy(zero_copy_only=False), dtype=object)
-        joined = pc.binary_join_element_wise(*parts, GROUP_KEY_SEP)
-        return np.asarray(joined.to_numpy(zero_copy_only=False), dtype=object)
+        # JSON of the value tuple: unambiguous whatever characters the values contain
+        cols_py = [p.to_pylist() for p in parts]
+        return np.asarray(
+            [json.dumps(list(row)) for row in zip(*cols_py, strict=True)], dtype=object
+        )
 
     @property
     def groups(self) -> NDArray[Any] | None:
@@ -238,7 +249,11 @@ def _column_bytes(col: pa.ChunkedArray) -> bytes:
         body = vals.tobytes()
     else:
         items = arr.cast(pa.string()).to_pylist() if _castable(arr) else arr.to_pylist()
-        body = "\x1e".join("" if v is None else str(v) for v in items).encode("utf-8")
+        # length-prefixed so that different value lists can never serialise identically
+        body = b"".join(
+            len(e).to_bytes(8, "little") + e
+            for e in (("" if v is None else str(v)).encode("utf-8") for v in items)
+        )
     return nulls.tobytes() + b"\x00" + body
 
 

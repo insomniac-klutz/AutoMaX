@@ -45,7 +45,7 @@ def test_resolver_refuses_a_target_column(tmp_path: Path) -> None:
     df = pd.DataFrame({"id": ["a", "b"], "x": [1.0, 2.0], "y": [0, 1]})
     uf = UnitFrame.from_pandas(df, Roles("id", "y", ("x",)))
     with pytest.raises(ResolverError, match="target"):
-        run_resolver(tmp_path, uf, tmp_path / "w", expected_hash="sha256:x")
+        run_resolver(tmp_path, uf, expected_hash="sha256:x")
 
 
 @pytest.fixture

@@ -21,6 +21,7 @@ from amx.cert import (
     hb_upper,
     slice_risks,
 )
+from amx.cert.slices import slice_labels
 from amx.spec.enums import Family, Policy, Regime
 
 
@@ -44,12 +45,37 @@ def test_dkw() -> None:
 
 
 def test_slice_flags() -> None:
-    labels = np.array(["a"] * 2000 + ["b"] * 30)
-    losses = np.r_[np.zeros(2000), np.ones(3), np.zeros(27)]
-    out = slice_risks("grp", labels, losses, np.ones(2030, bool), alpha=0.01, binary=True)
+    labels = np.array(["a"] * 2000 + ["b"] * 30 + ["c"] * 30)
+    losses = np.r_[np.zeros(2000), np.zeros(30), np.ones(3), np.zeros(27)]
+    out = slice_risks("grp", labels, losses, np.ones(2060, bool), alpha=0.01, binary=True)
     by = {s.value: s for s in out}
     assert by["a"].flag is None
     assert by["b"].flag == "insufficient_n"
+    assert by["c"].flag == "lower_gt_2alpha"  # small but clearly failing: escalated
+
+
+def test_slice_labels_never_emit_raw_numeric_values() -> None:
+    rng = np.random.default_rng(0)
+    vals = rng.normal(size=500)
+    labels = slice_labels(vals)
+    assert set(labels) <= {f"q{i:02d}" for i in range(1, 11)}
+    assert not set(labels) & {str(v) for v in vals}
+
+
+def test_slice_labels_pool_small_and_rare_levels() -> None:
+    vals = np.array(["x"] * 100 + ["y"] * 40 + ["rare"] * 3)
+    labels = slice_labels(vals)
+    assert set(labels) == {"x", "y", "(other)"}
+
+
+def test_group_mode_slices_are_descriptive_and_skip_empty_cells() -> None:
+    labels = np.array(["a"] * 50 + ["b"] * 50)
+    committed = np.r_[np.ones(50, bool), np.zeros(50, bool)]
+    out = slice_risks(
+        "g", labels, np.zeros(100), committed, alpha=0.05, binary=True, descriptive=True
+    )
+    assert [s.value for s in out] == ["a"]
+    assert out[0].upper95 is None and out[0].bound == "descriptive"
 
 
 def test_guarantee_type_selection() -> None:

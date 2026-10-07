@@ -149,3 +149,14 @@ def test_custom_loss_requires_confirmation(tmp_path: Path) -> None:
     assert loss([0.5], [0.0]).tolist() == [0.5]
     squashed = load_custom_loss(f, "loss", confirmed=True, params={"squash": 1.0})
     assert 0 < squashed([10.0], [0.0])[0] < 1
+
+
+def test_zero_one_compares_sequence_labels() -> None:
+    out = zero_one()([["a", "b"], ("c",), np.array(["d"])], [("a", "b"), ["c", "x"], ["d"]])
+    assert out.tolist() == [0.0, 1.0, 0.0]
+
+
+def test_unexpected_errors_become_loss_errors() -> None:
+    bad = Loss("bad", lambda p, g: [float(x) for x in g], is_binary=False)
+    with pytest.raises(LossError, match="cannot score"):
+        bad(["a"], ["not-a-number"])

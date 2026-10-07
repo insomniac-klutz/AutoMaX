@@ -7,7 +7,9 @@ that reads calibration or sealed data lives in :mod:`amx.warden`.
 
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -22,10 +24,12 @@ from amx.cert.grid import TauGrid
 from amx.data.io import load_unitframe
 from amx.data.unitframe import UnitFrame
 from amx.loss.registry import build_loss
+from amx.loss.validate import check_loss, loss_distribution
 from amx.profile.audit import pre_profile, resolve_regime
 from amx.profile.feasibility import Feasibility, feasibility
 from amx.report.bands_md import render_bands_md
 from amx.report.frontier import plot_frontier
+from amx.spec.enums import LossKind, Regime
 from amx.spec.hashing import content_hash
 from amx.spec.loader import load_taskspec
 from amx.spec.models import TaskSpec
@@ -34,6 +38,7 @@ from amx.split.oof import oof_train_mask
 from amx.split.run import MANIFEST_NAME, TASKSPEC_NAME, load_dev, split_run
 from amx.split.vault import LocalVault
 from amx.warden.certify import CERT_RELPATH
+from amx.warden.common import CUSTOM_LOSS_HASH, CUSTOM_LOSS_NAME, PRE_PROFILE_NAME
 
 log = get_logger(__name__)
 
@@ -70,31 +75,69 @@ def profile_pre(spec_path: str | Path) -> dict[str, Any]:
     return {"pre": pre.model_dump(mode="json"), "resolved_regime": resolve_regime(spec, pre).value}
 
 
+def _snapshot_custom_loss(
+    spec: TaskSpec, spec_path: Path, run_dir: Path, vault: LocalVault, run_id: str
+) -> None:
+    """Copy a custom loss next to the run's spec copy and into the vault, with its hash.
+
+    The path is resolved against the spec file's directory (like ``data.uri``). Dev-side steps
+    load the run-dir copy; the warden loads only the vault copy and checks its hash.
+    """
+    ls = spec.task.loss
+    if ls.kind is not LossKind.CUSTOM:
+        return
+    assert ls.path is not None
+    rel = Path(ls.path)
+    src = rel if rel.is_absolute() else spec_path.resolve().parent / rel
+    if not src.is_file():
+        raise RunError(f"custom loss file not found: {src}")
+    data = src.read_bytes()
+    dest = run_dir / (rel.name if rel.is_absolute() else rel)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    vault.write_text(run_id, CUSTOM_LOSS_NAME, data.decode("utf-8"))
+    vault.write_text(run_id, CUSTOM_LOSS_HASH, "sha256:" + hashlib.sha256(data).hexdigest())
+
+
 def split(
     spec_path: str | Path,
     run_dir: str | Path,
     *,
     vault: LocalVault | None = None,
-    run_id: str | None = None,
     allow_small: bool = False,
 ) -> dict[str, Any]:
-    """Profile (label-free), resolve the regime and split; dev goes to ``run_dir``."""
-    spec = load_taskspec(spec_path)
-    uf = load_unitframe(spec, spec_path)
+    """Profile (label-free), resolve the regime and split; dev goes to ``run_dir``.
+
+    The run id is the run directory's name; the warden derives it the same way.
+    """
+    sp = Path(spec_path)
+    spec = load_taskspec(sp)
+    uf = load_unitframe(spec, sp)
     if uf.n < SMALL_DATA and not allow_small:
         raise RunError(f"only {uf.n} units; small-data runs need --allow-small (HANDOFF 8.1)")
     pre = pre_profile(uf, spec)
     regime = resolve_regime(spec, pre)
+    if regime is Regime.GROUPED and spec.data.independence_group is None:
+        raise RunError("regime 'grouped' needs independence_unit: group:<col> (OQ Q2)")
     rd = Path(run_dir).resolve()
-    rid = run_id or rd.name
-    res = split_run(spec, uf, rd, vault or LocalVault(), rid, regime=regime)
-    _write_json(rd / PROFILE_NAME, {"pre": pre.model_dump(mode="json")})
+    rid = rd.name
+    v = vault or LocalVault()
+    res = split_run(spec, uf, rd, v, rid, regime=regime)
+    pre_json = pre.model_dump(mode="json")
+    v.write_text(rid, PRE_PROFILE_NAME, json.dumps(pre_json, indent=2))
+    _snapshot_custom_loss(spec, sp, rd, v, rid)
+    _write_json(rd / PROFILE_NAME, {"pre": pre_json})
     counts = res.manifest.counts.model_dump()
     log.info("split %s: regime %s, counts %s", rid, regime.value, counts)
     return {
         "run_id": rid,
         "regime": regime.value,
         "counts": counts,
+        "independent_counts": (
+            None
+            if res.manifest.independent_counts is None
+            else res.manifest.independent_counts.model_dump()
+        ),
         "manifest": str(res.manifest_path),
         "reproducibility_hash": res.manifest.reproducibility_hash(),
     }
@@ -153,11 +196,20 @@ def profile_feasibility(run_dir: str | Path, *, confirm_loss: bool = False) -> F
             "oof_scores": frozen.predictor.oof_scores(),
             "oof_losses": frozen.predictor.oof_losses(),
         }
+    if spec.data.independence_group is not None:
+        if manifest.independent_counts is None:
+            raise RunError("the manifest lacks group counts; re-split with this amx version")
+        n_calib = manifest.independent_counts.calib
+    else:
+        n_calib = manifest.counts.calib
+    check = check_loss(loss, dev.target, seed=spec.splits.seed)
+    if not check.ok:
+        raise RunError(f"loss validation failed on dev gold (HANDOFF 7.9): {check.errors}")
     feas = feasibility(
         spec,
         regime=manifest.regime,
         dev_target=dev.target,
-        n_calib=manifest.counts.calib,
+        n_calib=n_calib,
         loss_fn=loss,
         loss_is_binary=loss.is_binary,
         **kwargs,
@@ -167,6 +219,10 @@ def profile_feasibility(run_dir: str | Path, *, confirm_loss: bool = False) -> F
     if path.is_file():
         current = json.loads(path.read_text(encoding="utf-8"))
     current["feasibility"] = feas.model_dump(mode="json")
+    current["loss_check"] = {"ok": check.ok, "errors": check.errors, "warnings": check.warnings}
+    if "oof_losses" in kwargs:
+        dist = loss_distribution(kwargs["oof_losses"], is_binary=loss.is_binary)
+        current["loss_distribution"] = asdict(dist)
     _write_json(path, current)
     return feas
 

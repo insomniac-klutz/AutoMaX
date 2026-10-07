@@ -34,7 +34,12 @@ class Loss:
         n_pred, n_gold = _length(pred), _length(gold)
         if n_pred != n_gold:
             raise LossError(f"{self.name}: pred has {n_pred} units, gold has {n_gold}")
-        out = np.asarray(self.fn(pred, gold), dtype=np.float64).reshape(-1)
+        try:
+            out = np.asarray(self.fn(pred, gold), dtype=np.float64).reshape(-1)
+        except LossError:
+            raise
+        except (TypeError, ValueError, KeyError, IndexError) as exc:
+            raise LossError(f"{self.name}: cannot score these values: {exc}") from exc
         if out.shape[0] != n_gold:
             raise LossError(f"{self.name}: returned {out.shape[0]} values for {n_gold} units")
         if not np.all(np.isfinite(out)):

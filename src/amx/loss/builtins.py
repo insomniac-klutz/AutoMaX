@@ -26,14 +26,27 @@ def _is_missing(v: Any) -> bool:
     return v is None or (isinstance(v, float) and np.isnan(v))
 
 
+def _comparable(v: Any) -> Any:
+    """Hashable, order-preserving form of a label (sequences become tuples)."""
+    if isinstance(v, np.ndarray):
+        return tuple(_comparable(x) for x in v.tolist())
+    if isinstance(v, list | tuple):
+        return tuple(_comparable(x) for x in v)
+    return v
+
+
 def zero_one() -> Loss:
-    """1 if the committed label differs from gold, else 0."""
+    """1 if the committed label differs from gold, else 0 (sequence labels compare as tuples)."""
 
     def fn(pred: Any, gold: Any) -> FloatArray:
         p, g = _as_objects(pred), _as_objects(gold)
         if any(_is_missing(v) for v in g):
             raise LossError("gold contains missing values")
-        return np.fromiter((float(a != b) for a, b in zip(p, g, strict=True)), np.float64, len(g))
+        return np.fromiter(
+            (float(_comparable(a) != _comparable(b)) for a, b in zip(p, g, strict=True)),
+            np.float64,
+            len(g),
+        )
 
     return Loss("zero_one", fn, is_binary=True)
 

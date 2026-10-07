@@ -44,10 +44,12 @@ def test_iid_recommended_without_structure() -> None:
     assert pre.modality == "tabular"
 
 
-def test_group_like_column_recommends_grouped() -> None:
+def test_group_like_column_is_only_a_warning() -> None:
+    """Undeclared id-like columns never switch the regime; the user must declare groups."""
     pre = pre_profile(frame(5000, {"entity": [f"e{i % 400}" for i in range(5000)]}), spec())
     assert "entity" in pre.group_candidates
-    assert pre.recommended_regime is Regime.GROUPED
+    assert pre.recommended_regime is Regime.IID
+    assert any("group_columns" in w for w in pre.warnings)
 
 
 def test_time_like_column_warns() -> None:
@@ -112,4 +114,5 @@ def test_feasibility_detects_cap_and_floor() -> None:
         oof_losses=(rng.uniform(size=1000) < 0.3).astype(float),
     )
     assert any("cap" in w for w in f.warnings)
-    assert f.bands[0].below_noise_floor
+    assert f.bands[0].below_baseline_floor
+    assert not f.requires_force  # a baseline limit is a warning, not infeasibility

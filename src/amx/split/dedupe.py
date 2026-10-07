@@ -91,10 +91,12 @@ def canonical_clusters(
     keys = duplicate_keys(uf)
     dup = None if keys is None else keys[order]
     if regime is Regime.GROUPED:
-        groups = uf.groups
-        if groups is None:
+        cols = uf.roles.group_columns
+        if not cols:
             raise SplitError("regime 'grouped' needs data.group_columns")
-        return merge_labels(groups[order], dup)
+        # every group column separately: no id of ANY listed column may straddle folds (6.1)
+        per_column = [np.asarray(uf.column(c), dtype=object).astype(str)[order] for c in cols]
+        return merge_labels(*per_column, dup)
     if dup is None:
         return np.arange(uf.n, dtype=np.int64)
     return dense_by_first(dup)

@@ -184,7 +184,11 @@ def load_unitframe(
     """
     path = resolve_uri(spec, spec_path)
     table = read_table(path, spec.data.format, cache_dir=cache_dir)
-    return UnitFrame.from_spec(table, spec.data)
+    forbidden = spec.constraints.forbidden_inputs
+    missing = [c for c in forbidden if c not in table.column_names]
+    if missing:
+        raise DataLoadError(f"forbidden_inputs name unknown columns: {missing}")
+    return UnitFrame.from_spec(table, spec.data, forbidden)
 
 
 # persistence -----------------------------------------------------------------------------

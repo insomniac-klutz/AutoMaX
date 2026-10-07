@@ -20,7 +20,7 @@ from amx.spec.models import TaskSpec
 
 CAP_SHARE_WARN = 0.01
 IMBALANCE_WARN = 0.05
-FLOOR_BIN = 200
+FLOOR_BIN = 200  # units in the baseline's most confident dev OOF bin
 
 
 class BandFeasibility(BaseModel):
@@ -34,7 +34,7 @@ class BandFeasibility(BaseModel):
     start_tau: float | None
     expected_committed_at_start: float | None
     trivially_met_by_constant: bool
-    below_noise_floor: bool
+    below_baseline_floor: bool
     notes: list[str]
 
 
@@ -48,8 +48,9 @@ class Feasibility(BaseModel):
     target_summary: dict[str, float | int | str]
     constant_risk: float | None
     constant_risk_upper95: float | None
-    noise_floor_estimate: float | None
-    noise_floor_lower95: float | None
+    baseline_floor_estimate: float | None
+    baseline_floor_lower95: float | None
+    independence_unit: str
     bands: list[BandFeasibility]
     requires_force: bool
     requires_allow_small: bool
@@ -120,7 +121,11 @@ def feasibility(
     oof_scores: ArrayLike | None = None,
     oof_losses: ArrayLike | None = None,
 ) -> Feasibility:
-    """n_min check, dev-estimated start points, constant-predictor and noise-floor flags."""
+    """n_min check, dev-estimated start points, constant-predictor and baseline-floor flags.
+
+    ``n_calib`` counts independence units: calibration groups when the spec certifies at group
+    level (``independence_unit: group:<col>``), units otherwise (Q2).
+    """
     y = np.asarray(dev_target)
     summary, warnings = _target_summary(y, spec.data.target.kind)
     budget = DeltaBudget(spec.bands.delta, spec.bands.m, spec.cert.call_policy)
@@ -156,7 +161,7 @@ def feasibility(
         notes: list[str] = []
         necessary = n_calib >= need
         if not necessary:
-            notes.append(f"calib has {n_calib} units, fewer than n_min={need}")
+            notes.append(f"calib has {n_calib} independence units, fewer than n_min={need}")
         feas: bool | None = None
         start_tau = expected = None
         if t is not None and cov is not None:
@@ -172,8 +177,11 @@ def feasibility(
             notes.append("a constant predictor already meets this band at full coverage")
         below = floor_lo is not None and floor_lo > alpha
         if below:
-            notes.append("dev estimate of the label-noise floor lies above alpha")
-        if not necessary or feas is False or below:
+            notes.append(
+                "the baseline's most confident dev OOF units already exceed alpha (a limit of "
+                "this baseline, not necessarily label noise)"
+            )
+        if not necessary or feas is False:
             force = True
         bands.append(
             BandFeasibility(
@@ -185,7 +193,7 @@ def feasibility(
                 start_tau=start_tau,
                 expected_committed_at_start=expected,
                 trivially_met_by_constant=trivial,
-                below_noise_floor=below,
+                below_baseline_floor=below,
                 notes=notes,
             )
         )
@@ -205,8 +213,9 @@ def feasibility(
         target_summary=summary,
         constant_risk=c_risk,
         constant_risk_upper95=c_up,
-        noise_floor_estimate=floor,
-        noise_floor_lower95=floor_lo,
+        baseline_floor_estimate=floor,
+        baseline_floor_lower95=floor_lo,
+        independence_unit="groups" if spec.data.independence_group else "units",
         bands=bands,
         requires_force=force,
         requires_allow_small=(n_dev + n_calib) < 3000,

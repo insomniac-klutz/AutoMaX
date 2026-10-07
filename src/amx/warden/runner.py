@@ -1,8 +1,12 @@
 """Run a frozen artifact on inputs only, in a subprocess (HANDOFF 8.4 step 1).
 
-The subprocess receives a parquet file with the unit id and input columns, never a label, and a
-scrubbed environment: no freeze token, no vault path, single-threaded math libraries so the
-commit scores match a batch run bit for bit.
+The subprocess receives a parquet file with the unit id and input columns, never a label. It
+runs in a fresh temporary directory outside the vault (also its working directory and HOME),
+in isolated mode (``python -I``: no user site, no PYTHON* variables, no script or current
+directory on ``sys.path``), with a scrubbed environment (no freeze token, no vault path) and
+single-threaded math libraries so the commit scores match a batch run bit for bit. In
+``local_dir`` vault mode this is hygiene, not isolation: the process still runs as the same
+user (HANDOFF 8.4).
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ import pyarrow.parquet as pq
 
 from amx.data.unitframe import UnitFrame
 
-KEEP_ENV = ("PATH", "LANG", "LC_ALL", "HOME", "TMPDIR", "SYSTEMROOT")
+KEEP_ENV = ("PATH", "LANG", "LC_ALL", "SYSTEMROOT")
 THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
     "OPENBLAS_NUM_THREADS": "1",
@@ -33,16 +37,17 @@ class ResolverError(RuntimeError):
     """The resolver subprocess failed or returned malformed output."""
 
 
-def scrubbed_env() -> dict[str, str]:
+def scrubbed_env(home: Path) -> dict[str, str]:
     env = {k: os.environ[k] for k in KEEP_ENV if k in os.environ}
     env.update(THREAD_ENV)
+    env["HOME"] = str(home)
+    env["TMPDIR"] = str(home)
     return env
 
 
 def run_resolver(
     artifact_dir: Path,
     units: UnitFrame,
-    workdir: Path,
     *,
     expected_hash: str,
     timeout_s: float = 3600.0,
@@ -52,14 +57,14 @@ def run_resolver(
     table = units.table.select([roles.unit_id, *roles.inputs])
     if roles.target is not None and roles.target in table.column_names:
         raise ResolverError("refusing to pass a target column to the resolver")
-    workdir.mkdir(parents=True, exist_ok=True)
-    tmp = Path(tempfile.mkdtemp(prefix="resolve-", dir=workdir))
+    tmp = Path(tempfile.mkdtemp(prefix="amx-resolve-"))
     try:
         os.chmod(tmp, 0o700)
         in_path, out_path = tmp / "inputs.parquet", tmp / "out.parquet"
         pq.write_table(table, in_path)
         cmd = [
             sys.executable,
+            "-I",
             "-m",
             "amx.baseline.resolve",
             str(artifact_dir),
@@ -69,7 +74,13 @@ def run_resolver(
             expected_hash,
         ]
         proc = subprocess.run(
-            cmd, env=scrubbed_env(), capture_output=True, text=True, timeout=timeout_s, check=False
+            cmd,
+            env=scrubbed_env(tmp),
+            cwd=tmp,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
         )
         if proc.returncode != 0:
             raise ResolverError(f"resolver failed ({proc.returncode}): {proc.stderr[-2000:]}")

@@ -451,7 +451,8 @@
             {
               "enum": [
                 "insufficient_n",
-                "upper_gt_2alpha"
+                "upper_gt_2alpha",
+                "lower_gt_2alpha"
               ],
               "type": "string"
             },
@@ -536,6 +537,10 @@
       "title": "Bands",
       "type": "array"
     },
+    "claims_certification": {
+      "title": "Claims Certification",
+      "type": "boolean"
+    },
     "diagnostics": {
       "additionalProperties": true,
       "default": {},
@@ -577,6 +582,7 @@
   },
   "required": [
     "amx_version",
+    "claims_certification",
     "run_id",
     "taskspec_hash",
     "artifact_hash",

@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 import re
 
-from amx.cert.guarantee import GuaranteeType
+from amx.cert.guarantee import CLAIMING_TYPES, GuaranteeType
 
 SIGNIFICANT_DIGITS = 4
 MISSING = "–"
@@ -23,9 +23,7 @@ MISSING = "–"
 # Guarantee types under which a band threshold may be called "certified". LTT gives a
 # high-probability bound and CRC an expectation bound on the selective risk; ACI's long-run
 # frequency covers interval miscoverage only, never the selective risk at τ̂ (7.1, D15).
-CERTIFYING_TYPES: frozenset[GuaranteeType] = frozenset(
-    {GuaranteeType.PAC_HIGH_PROB, GuaranteeType.EXPECTATION}
-)
+CERTIFYING_TYPES: frozenset[GuaranteeType] = CLAIMING_TYPES
 
 # No word boundaries: "recertified" or "pre-certified" must be caught as well.
 _CLAIM_WORDS = re.compile(r"(un)?(certified|certifiable)", re.IGNORECASE)

@@ -164,3 +164,17 @@ def test_budget_policies() -> None:
     assert DeltaBudget(0.1, 4).simultaneous_level == 0.1
     with pytest.raises(ValueError):
         DeltaBudget(0.1, 4, CallPolicy.SINGLE, k=2)
+
+
+def test_inherited_through_the_walk_when_a_looser_band_is_sample_size_limited() -> None:
+    """The looser band starts earlier (smaller n_min) where calib has too few units; the
+    tighter band starts later and certifies; monotonisation lends its τ̂ to the looser band."""
+    s = np.r_[np.full(100, 0.02), np.linspace(0.5, 1.0, 1900)]
+    L = np.r_[np.zeros(100), (np.arange(1900) % 10 == 0).astype(float)]
+    tau = TauGrid(size=200).values
+    res = fixed_sequence_ltt(grid_stats(s, L, tau, binary=True), [0.05, 0.2], 0.05, tau)
+    tight, loose = res.bands
+    assert tight.status is BandStatus.CERTIFIED and tight.raw_index is not None
+    assert loose.stop_reason is StopReason.SAMPLE_SIZE_LIMITED and loose.raw_index is None
+    assert loose.status is BandStatus.INHERITED and loose.source_band == 0
+    assert loose.index == tight.raw_index

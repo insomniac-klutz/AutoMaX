@@ -96,6 +96,16 @@ class DataSpec(_Model):
         overlap = set(self.group_columns) & set(self.series_columns)
         if overlap:
             raise ValueError(f"columns cannot be both group and series columns: {sorted(overlap)}")
+        role_cols = {*self.group_columns, *self.series_columns}
+        if self.time_column is not None:
+            role_cols.add(self.time_column)
+        if self.target.name in role_cols:
+            raise ValueError("the target cannot also be a group, series or time column")
+        if self.group_columns and self.independence_unit == "unit":
+            raise ValueError(
+                "group_columns are declared, so units inside a group are not independent: "
+                "set independence_unit: group:<col> (OQ Q2)"
+            )
         return self
 
     @property
@@ -321,6 +331,11 @@ class CertSpec(_Model):
     def _grid(self) -> CertSpec:
         if self.grid_min >= self.grid_max:
             raise ValueError("grid_min must be below grid_max")
+        if self.call_policy is not CallPolicy.SINGLE:
+            raise ValueError(
+                f"call_policy '{self.call_policy.value}' is not implemented in A0: the warden "
+                "certifies one call per calib fold only (OQ Q1)"
+            )
         return self
 
 
@@ -367,9 +382,12 @@ class TaskSpec(_Model):
             for s in self.bands.watch_slices:
                 if s.by != "target" and s.by not in known:
                     raise ValueError(f"watch_slice '{s.name}' uses unknown column '{s.by}'")
-            unknown = set(self.constraints.forbidden_inputs) - set(names)
-            if unknown:
-                raise ValueError(f"forbidden_inputs are not inputs: {sorted(unknown)}")
+            used = set(self.constraints.forbidden_inputs) & set(names)
+            if used:
+                raise ValueError(f"forbidden_inputs are listed as inputs: {sorted(used)}")
+        for s in self.bands.watch_slices:
+            if s.by == data.unit_id:
+                raise ValueError(f"watch_slice '{s.name}' cannot slice by the unit id")
         return self
 
     @property

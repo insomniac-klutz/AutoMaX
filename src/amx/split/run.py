@@ -72,7 +72,7 @@ def _check_roles(spec: TaskSpec, uf: UnitFrame) -> None:
     inputs for duplicate clusters, the target for stratification), so all of them must match
     :meth:`Roles.from_spec`, not only ``unit_id`` and ``target``.
     """
-    expected = Roles.from_spec(spec.data, uf.table.column_names)
+    expected = Roles.from_spec(spec.data, uf.table.column_names, spec.constraints.forbidden_inputs)
     if uf.roles == expected:
         return
     diffs = [

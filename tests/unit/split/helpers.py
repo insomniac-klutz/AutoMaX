@@ -39,7 +39,8 @@ def make_spec(
     }
     if time_column is not None:
         data["time_column"] = time_column
-    if regime == "grouped" and group_columns:
+    if group_columns:
+        # group columns always need a group independence unit (OQ Q2)
         data["independence_unit"] = f"group:{group_columns[0]}"
     task: dict[str, Any] = {"family": "classification"}
     if kind == "numeric":

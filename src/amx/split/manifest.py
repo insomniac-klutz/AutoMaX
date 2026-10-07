@@ -21,6 +21,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
 from amx import __version__ as amx_version
@@ -62,6 +63,11 @@ class SplitManifest(_M):
     oof_k: int = Field(ge=2)
     oof_scheme: OofScheme
     amx_version: str
+    independence_group: str | None = None
+    independent_counts: FoldCounts | None = Field(
+        default=None,
+        description="counts in independence units (groups) when independence_unit is group:<col>",
+    )
 
     def content_hash(self) -> str:
         """Hash of the canonical JSON form of the manifest (includes the per-run keyed digests)."""
@@ -111,6 +117,20 @@ def build_manifest(
         raise ValueError("assignment does not match the UnitFrame")
     ids = uf.ids
     counts = assignment.counts
+    group_col = spec.data.independence_group
+    indep: FoldCounts | None = None
+    if group_col is not None:
+        g = np.asarray(uf.column(group_col), dtype=object).astype(str)
+
+        def n_groups(fold: Fold) -> int:
+            return len(set(g[assignment.mask(fold)].tolist()))
+
+        indep = FoldCounts(
+            dev=n_groups(Fold.DEV),
+            calib=n_groups(Fold.CALIB),
+            sealed=n_groups(Fold.SEALED),
+            dropped=n_groups(Fold.DROPPED),
+        )
     reasons = {DropReason(k): v for k, v in sorted(assignment.dropped_reasons.items())}
     return SplitManifest(
         spec_hash=content_hash(spec),
@@ -127,6 +147,8 @@ def build_manifest(
         oof_k=oof_k,
         oof_scheme=oof_scheme,
         amx_version=amx_version,
+        independence_group=group_col,
+        independent_counts=indep,
     )
 
 

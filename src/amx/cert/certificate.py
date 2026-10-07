@@ -12,7 +12,13 @@ from pydantic import BaseModel, ConfigDict
 from amx.cert.bounds import dkw_halfwidth
 from amx.cert.budget import DeltaBudget
 from amx.cert.grid import TauGrid
-from amx.cert.guarantee import NEVER_CLAIMED, Guarantee, GuaranteeType, base_assumptions
+from amx.cert.guarantee import (
+    NEVER_CLAIMED,
+    Guarantee,
+    GuaranteeType,
+    base_assumptions,
+    claims_certification,
+)
 from amx.cert.ltt import BandStatus, LTTResult, StopReason
 from amx.cert.slices import SliceRisk
 from amx.spec.enums import Policy, Regime
@@ -41,7 +47,7 @@ class SliceEntry(_M):
     risk: float | None
     upper95: float | None
     bound: str
-    flag: Literal["insufficient_n", "upper_gt_2alpha"] | None
+    flag: Literal["insufficient_n", "upper_gt_2alpha", "lower_gt_2alpha"] | None
 
 
 class BandEntry(_M):
@@ -75,6 +81,7 @@ class FrontierPoint(_M):
 
 class Certificate(_M):
     amx_version: str
+    claims_certification: bool
     run_id: str
     taskspec_hash: str
     artifact_hash: str
@@ -129,21 +136,30 @@ def build_certificate(
     risk = st.risk()
     unit_risk = st.unit_risk()
     cov = st.coverage()
+    # DKW needs independent draws: only unit-level, exchangeable (pac) calibration sets get an
+    # interval; group-level and temporal coverage is reported as a descriptive estimate (C17).
+    use_dkw = st.estimand == "unit_weighted" and guarantee_type is GuaranteeType.PAC_HIGH_PROB
     half = dkw_halfwidth(st.n_total_units)
+
+    def coverage_interval(c: float) -> Interval:
+        if not use_dkw:
+            return Interval(est=c, ci95=None, method="descriptive")
+        return Interval(
+            est=c, ci95=(max(0.0, c - half), min(1.0, c + half)), method="dkw_uniform_in_tau"
+        )
+
     bands: list[BandEntry] = []
     warnings: list[str] = []
     for j, b in enumerate(result.bands):
         idx = b.index
         if idx is None:
             n_c = n_i = 0
-            cov_iv = Interval(est=0.0, ci95=(0.0, min(1.0, half)), method="dkw_uniform_in_tau")
+            cov_iv = coverage_interval(0.0)
             r_est, r_unit = None, None
         else:
             n_c, n_i = int(st.n_units[idx]), int(st.n_indep[idx])
             c = float(cov[idx])
-            cov_iv = Interval(
-                est=c, ci95=(max(0.0, c - half), min(1.0, c + half)), method="dkw_uniform_in_tau"
-            )
+            cov_iv = coverage_interval(c)
             r_est, r_unit = _f(float(risk[idx])), _f(float(unit_risk[idx]))
         if b.status is BandStatus.UNCERTIFIED:
             warnings.append(
@@ -153,6 +169,11 @@ def build_certificate(
             warnings.append(f"band alpha={b.alpha:g}: walk stopped by n_min shortfall")
         entries = [] if slices is None else [SliceEntry(**vars(s)) for s in slices[j]]
         for s in entries:
+            if s.flag == "lower_gt_2alpha":
+                warnings.append(
+                    f"band alpha={b.alpha:g}: small slice {s.slice}={s.value} (n={s.n}) has a "
+                    "lower bound above 2*alpha"
+                )
             if s.flag == "upper_gt_2alpha":
                 warnings.append(
                     f"band alpha={b.alpha:g}: slice {s.slice}={s.value} upper bound "
@@ -202,6 +223,7 @@ def build_certificate(
     )
     return Certificate(
         amx_version=amx_version,
+        claims_certification=claims_certification(guarantee_type),
         run_id=run_id,
         taskspec_hash=taskspec_hash,
         artifact_hash=artifact_hash,
