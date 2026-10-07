@@ -198,14 +198,13 @@ Defaults D18 apply to G1 to G3 and Q1 to Q8; nothing above has been answered yet
 The fixed-sequence walk starts where dev estimates reach 1.25 × n_min committed units (7.2 step 3). It is valid, but at tight bands it tests at the lowest-power point: on the synthetic oracle, generator (a) never certifies α ≤ 1% and certifies α = 5% in 57% of repetitions at n_calib = 10,000.
 - (a) Keep the 1.25 × n_min rule.
 - (b) Choose the start on dev by simulating the walk on calibration-sized bootstraps of dev OOF (still fixed before calibration, so still valid).
-- **Default:** (a) in A0; compare (b) on T1 in A1 and adopt it if it raises certified coverage without changing the violation rates.
+- **Default:** (a) in A0; in A1, compare (b) on T1 and adopt it if it raises certified coverage without changing the violation rates. The A0 gate makes this urgent: California's 5% and 10% bands and the electricity diagnostic stopped at their first test because the dev-estimated start point overshot the calibration data.
 
 **Q27. The electricity gate series certifies nothing at the provisional Q5 settings.**
-With relative tolerance 10% and bands {5%, 10%}, the A0 seasonal-naive baseline certifies no band. This is not a validity failure (no gross failure), but it leaves gate item 4 vacuous for forecasting. A pre-registered diagnostic on another client at bands {20%, 30%} (`datasets/electricity_client/diagnostic_b.yaml`) checks the forecasting path non-vacuously.
-- (a) Keep the settings and let A1's forecasters raise coverage.
-- (b) Loosen the bands.
-- (c) Loosen the tolerance.
-- **Default:** (a), with the diagnostic as evidence that the path works.
+With relative tolerance 10% and bands {5%, 10%}, the A0 seasonal-naive baseline certifies no band on client 104: its risk is too high (no gross failure, so this is not a validity failure). A pre-registered diagnostic on client 127 at bands {20%, 30%} certified nothing either, but for another reason: the dev-estimated start point overshot the later calibration window (Q26). Gate item 4 is therefore vacuous for forecasting.
+- (a) Accept A0 with item 4 recorded as vacuous for the series; resolve it in A1 with better forecasters and the Q26 start rule.
+- (b) Loosen the series bands or tolerance now and re-run on a fresh benchmark seed.
+- **Default:** (a).
 
 **Q28. Benchmark runs and the partition ledger.**
 The A0 benchmark partitions (seed 20261007) were certified twice: once with the pre-review code (outputs deleted because of the slice leak) and once with the final code. The vault-wide partition ledger now refuses a second certification of a partition, so a future rerun of the A0 gate needs a fresh vault or a new benchmark seed.
