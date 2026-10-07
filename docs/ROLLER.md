@@ -9,13 +9,13 @@ Last updated: 2026-10-07.
 | Milestone | State | Gate | Blocked on |
 |---|---|---|---|
 | Planning | **done** | review complete (4 lenses, adversarial verify, completeness critic) | none |
-| A0 harness core, no agents | **ready to start** | T1-synth + T1-real-cheap + `make check` | G1 to G3 and Q1 to Q8 (defaults apply if unanswered) |
+| A0 harness core, no agents | **built; gate items 1-3 pass, item 4 vacuous for the series** (`docs/gates/A0.md`) | T1-synth + T1-forecast + T1-real-cheap + `make check` | owner decision on Q27 (series settings) and Q26 (start rule) |
 | A1 operators, scorer, baselines | not started | baselines in ledger, contract tests, T1-real on B1 | Q9 to Q13; encoder network access |
 | A2 graph, search, plugin, isolation | not started | T2 + backend A/B, T1-expensive, red-team, plugin validate | Q14 to Q19; Docker host for the warden |
 | A3 verifiers, reasons, manifest | not started | T3; manifest v1 frozen | Q20 to Q22; CLINC150 and Covertype loaders |
 | A4 ledger, warm start, packaging | not started | T4, T5 | Q23 to Q24; G1 |
 
-**Next action:** A0 step 1 (scaffold), as soon as G1 to G3 are answered or accepted at their defaults.
+**Next action:** owner answers Q26/Q27 (or accepts A0 with the series item recorded as vacuous). Then A1 starts with the start-rule comparison (Q26) and a dev_cov estimate for the deployed bag.
 
 ## Environment facts (cloud session, verified 2026-10-05)
 
@@ -167,4 +167,5 @@ Results: `docs/gates/A0.md`.
 | Date | Change |
 |---|---|
 | 2026-10-05 | Created from the four-lens review. Planning done; A0 ready. `HANDOFF.md` 0.1.1 adds domain-neutral wording (D17). |
+| 2026-10-07 | Fix verification of the integration review: warden pins once, resolver isolated from vault paths, fingerprint ledger, fail-closed auto groups, group-level slice bounds (dcf2992). Pre-registered electricity diagnostic B run once: vacuous (start point, not risk). |
 | 2026-10-07 | A0 built on OQ defaults (D18) and corrections C1-C17 (D19): steps 1-15. Data/split, ACI/simulators and report/baseline were built in parallel worktrees, each adversarially reviewed with its findings fixed; an integration review of the orchestrator-written modules found a slice leak of calibration gold values, a grouped auto path certified at unit level, unimplemented call policies and budget bypasses, all fixed with tests (commit e986e1e). Decisions D20-D25. Gate results in `docs/gates/A0.md`. |
