@@ -1,0 +1,10 @@
+# Protected core (HANDOFF 8.5, decision C10): changes need owner review.
+/src/amx/cert/       @insomniac-klutz
+/src/amx/eval/       @insomniac-klutz
+/src/amx/split/      @insomniac-klutz
+/src/amx/warden/     @insomniac-klutz
+/src/amx/loss/       @insomniac-klutz
+/tests/statistical/  @insomniac-klutz
+/tests/redteam/      @insomniac-klutz
+/claude-plugin/hooks/ @insomniac-klutz
+/.claude/            @insomniac-klutz

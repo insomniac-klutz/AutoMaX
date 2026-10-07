@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# AutoMaX
+runs/
+.amx/
+*.parquet
+!tests/fixtures/**/*.parquet
