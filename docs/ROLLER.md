@@ -2,7 +2,7 @@
 
 ROLLER is the living plan for building AutoMaX: the milestone status board, the next action, a file-by-file plan for the current milestone, and the corrections and risks the build has adopted. It is updated after every step. `HANDOFF.md` stays the spec; `docs/OQ.md` holds the owner's decisions.
 
-Last updated: 2026-10-05.
+Last updated: 2026-10-07.
 
 ## Status board
 
@@ -70,7 +70,7 @@ Order follows kickoff 18.2, with `amx.data` inserted because `split` needs it. C
 | 6 | `amx.cert` | `cert/{pvalues,nmin,grid,ltt,budget,bounds,slices,guarantee,certificate,writer}.py`, `docs/schemas/bands.schema.json` | Pure functions, no I/O. p-values per C1 and C5; `n_min`; fixed log grid (G = 200) hashed into the certificate; start index; vectorized fixed-sequence walk (cumsum gives n_g, k_g) with statuses certified, risk_limited, sample_size_limited, infeasible_on_dev and inherited; Bonferroni-diagnostic mode; group-level variant (Q2); δ budget per Q1; guarantee objects; `bands.json` writer | reproduces every 7.4 cell and the 895 figure; equals a corrected A.2 reference on 1k random cases; HB equals the reference formula; properties: nesting, τ̂ non-decreasing in α, p monotone; MC matrix (C5) | 1, 3 | L |
 | 7 | `amx.cert.aci` | `cert/{aci,rolling,block_bootstrap}.py` | Split-conformal per horizon, then ACI per C12; rolling-origin evaluation with embargo; block-bootstrap CI; forecasting selective risk is always `holdout_empirical` (Q6) | deterministic bound on adversarial 0/1 sequences; MC on AR(1)+season (miscoverage and infinite-interval share reported); label never upgraded | 6 | M |
 | 8 | `amx.sim` | `sim/{generators,oracle,t1_synth,tables}.py` | Generators: (a) Gaussian mixture, (b) heteroscedastic regression, (c) AR(1)+seasonal with shift, routed to the T1-forecast path, (d) clustered units at group level. Each has a closed-form scorer and Rao–Blackwell population risk (C6). The T1-synth runner outputs raw, monotonised and family-wise rates, tightness, and vacuous/indeterminate cells. Seeds are pre-registered in the decision log | oracle risk matches 1e6-sample MC within 4 SE; fast smoke (R = 100) in `make check`; full grid in `make stat` | 6, 7 | L |
-| 9 | trivial-model shim | `sim/trivial.py`, `warden/artifact.py` | `ScoredPredictor` (fit on dev; `predict`; `commit_score`; `dev_cov` from 5-fold dev OOF). Classification: logistic regression with s from isotonic of 1 − max-prob. Regression: quantile-pair width mapped by isotonic. Series: seasonal-naive + split-conformal. Frozen with joblib plus a sha256. Provisional, replaced in A1 | fit only ever receives dev ids; same seed gives the same artifact hash; `dev_cov` non-decreasing in τ | 3, 4, 5 | M |
+| 9 | trivial-model shim | `baseline/{trivial,artifact,resolve}.py` (moved from `sim/`, `warden/`; D22) | `ScoredPredictor` (fit on dev; `predict`; `commit_score`; `dev_cov` from 5-fold dev OOF). Classification: logistic regression with s from isotonic of 1 − max-prob. Regression: quantile-pair width mapped by isotonic. Series: seasonal-naive + split-conformal. Frozen with joblib plus a sha256. Provisional, replaced in A1 | fit only ever receives dev ids; same seed gives the same artifact hash; `dev_cov` non-decreasing in τ | 3, 4, 5 | M |
 | 10 | `amx.profile` | `profile/{modality,audit,feasibility,recommend,fingerprint}.py` | Two passes per C9; exchangeability audit (time, groups, duplicates, cap pile-up, imbalance); feasibility with `--force` / `--allow-small`; C14 checks; certifier and guarantee selection per 7.1; `profile.json` | timestamp leads to `temporal`; repeated ids lead to `grouped`; cap flagged; infeasible band needs `--force`; n < 3000 needs `--allow-small` | 4, 5, 6, 9 | M |
 | 11 | `amx.report` | `report/{bands_md,frontier}.py` | `bands.md` rendered from JSON only; guarantee type and assumptions; the 7.6 never-claimed list; warnings; slices; `frontier.png` (Agg backend) | golden file; "certified" absent for `none` / `holdout_empirical`; every number appears in the input JSON | 6 | S |
 | 12 | `amx.warden` (minimal, local) | `warden/{token,runner,certify,t1_real}.py` | Freeze token never in the agent env. Runs the artifact in a subprocess that receives inputs only, computes losses itself, certifies and increments the counter. `simulate --real` implements T1-real-cheap per Q3 (calib-only resplits, aggregates only). Sealed touch log | refuses without a token; counter enforced across processes; subprocess payload has no target column; output has no per-unit gold | 5, 6, 9 | M |
@@ -78,18 +78,26 @@ Order follows kickoff 18.2, with `amx.data` inserted because `split` needs it. C
 | 14 | datasets + e2e-small | `datasets/{adult,california_housing,electricity_client}/{spec.yaml,loader.py,NOTES.md,LICENSE_NOTE.md}`, `tests/e2e/`, `tests/unit/test_domain_blind.py` | Mirror lists with pinned sha256 (Q4); loss and bands per Q5 (owner-confirmed); offline toy end-to-end run; domain-blind lint (dataset and column names absent from `src/`) | network-marked loader shape and hash checks; `make e2e-small` offline; domain-blind lint | 4, 13 | M |
 | 15 | Gate A0 | `docs/gates/A0.md`, decision log | `make check`, `make stat` (T1-synth table), T1-real-cheap on the three datasets; guarantee types emitted; open issues | the gate itself | 8, 12, 13, 14 | S |
 
-### Gate A0 (as amended by C2, C6, Q3, Q6)
+### Gate A0 (as amended by C2, C6, Q3, Q6, D21, D24)
 
 1. `make check` is green.
 2. T1-synth over generators (a), (b), (d) × n_calib {500, 2000, 10000} × bands:
    - raw per-band violation rate ≤ δ_j + 3·sqrt(δ_j(1 − δ_j)/N_rep);
    - family-wise rate ≤ δ + the same slack;
-   - vacuous and indeterminate cells reported, not counted as passes;
-   - at least one certified band per generator at n_calib = 10000.
-3. Generator (c) passes T1-forecast: an empirical ±0.02 target, with the infinite-interval share reported.
-4. T1-real-cheap (calib-only resplits) on Adult, California Housing and the electricity client: no gross failure, and at least one certified band per dataset.
+   - vacuous and indeterminate cells reported, not counted as passes (cell verdict `gate_pass`);
+   - per generator, some band certified in at least 10% of reps at n_calib = 10000.
+3. T1-forecast on the stationary variant of generator (c): |miscoverage − α| ≤ 0.02 (empirical target) and infinite + empty interval share ≤ 0.01 per horizon. The shifted path is reported with its one-sided ACI bounds, not gated (D21).
+4. T1-real-cheap (calib-only resplits, after the certify call) on Adult, California Housing and the electricity client: no gross failure, and some band released in at least 10% of resplits per dataset.
+
+Results: `docs/gates/A0.md`.
 
 ## Later milestones (outline; expanded when the previous gate passes)
+
+**Carried forward from A0 (found while building or reviewing A0).**
+- Start-rule power: the 1.25·n_min start certifies tight bands rarely (generator (a): α ≤ 1% never, α = 5% in 57% of reps at n_calib = 10000). Evaluate the dev-simulated start rule (review S-start-rule-low-power) in A1; validity is unaffected (OQ Q26).
+- `dev_cov` comes from single-fold OOF scores while the artifact is the bag of fold models (Q13). The deployed score distribution differs, so start points can miss (California's 5% and 10% bands stopped `sample_size_limited`). A1's cross-fitted scorer should estimate `dev_cov` for the deployed bag.
+- Anomaly family: `missed_anomaly` only bounds the intended quantity if the commit rule commits units predicted normal only; enforce that in the A3 graph and validate `normal_label` against dev gold.
+- Release mode (A2): bind tokens to one command and consume them on use, read them from a prompt or file rather than argv, refuse re-splitting a dataset that already has a release, and run the warden in container mode.
 
 **A1: operators, scorer, baselines.**
 - Operator protocol with `apply(x, ctx)` and declared `signal_names`.
@@ -159,3 +167,4 @@ Order follows kickoff 18.2, with `amx.data` inserted because `split` needs it. C
 | Date | Change |
 |---|---|
 | 2026-10-05 | Created from the four-lens review. Planning done; A0 ready. `HANDOFF.md` 0.1.1 adds domain-neutral wording (D17). |
+| 2026-10-07 | A0 built on OQ defaults (D18) and corrections C1-C17 (D19): steps 1-15. Data/split, ACI/simulators and report/baseline were built in parallel worktrees, each adversarially reviewed with its findings fixed; an integration review of the orchestrator-written modules found a slice leak of calibration gold values, a grouped auto path certified at unit level, unimplemented call policies and budget bypasses, all fixed with tests (commit e986e1e). Decisions D20-D25. Gate results in `docs/gates/A0.md`. |

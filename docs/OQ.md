@@ -13,6 +13,7 @@ Owner decisions needed to build AutoMaX as specified in `HANDOFF.md`. Status: **
 | 2 | before A1 | Q9 to Q13 |
 | 3 | before A2 | Q14 to Q19 |
 | 4 | before A3 / A4 | Q20 to Q25 |
+| new | raised by the A0 build (2026-10-07) | Q26 to Q28 |
 
 ---
 
@@ -186,6 +187,29 @@ The 13 table mixes facets. "vision" is a modality, and BANKING77 and CLINC150 bo
 **Q24. MCP server (O8).** **Default:** no.
 
 **Q25. `amx doctor` naming.** This is the only remaining medical-sounding token. It is the standard CLI idiom (`brew doctor`, `flutter doctor`). **Default:** keep it, and allowlist it in the vocabulary check.
+
+---
+
+## Raised by the A0 build (2026-10-07)
+
+Defaults D18 apply to G1 to G3 and Q1 to Q8; nothing above has been answered yet.
+
+**Q26. Start rule and power at tight bands.**
+The fixed-sequence walk starts where dev estimates reach 1.25 × n_min committed units (7.2 step 3). It is valid, but at tight bands it tests at the lowest-power point: on the synthetic oracle, generator (a) never certifies α ≤ 1% and certifies α = 5% in 57% of repetitions at n_calib = 10,000.
+- (a) Keep the 1.25 × n_min rule.
+- (b) Choose the start on dev by simulating the walk on calibration-sized bootstraps of dev OOF (still fixed before calibration, so still valid).
+- **Default:** (a) in A0; compare (b) on T1 in A1 and adopt it if it raises certified coverage without changing the violation rates.
+
+**Q27. The electricity gate series certifies nothing at the provisional Q5 settings.**
+With relative tolerance 10% and bands {5%, 10%}, the A0 seasonal-naive baseline certifies no band. This is not a validity failure (no gross failure), but it leaves gate item 4 vacuous for forecasting. A pre-registered diagnostic on another client at bands {20%, 30%} (`datasets/electricity_client/diagnostic_b.yaml`) checks the forecasting path non-vacuously.
+- (a) Keep the settings and let A1's forecasters raise coverage.
+- (b) Loosen the bands.
+- (c) Loosen the tolerance.
+- **Default:** (a), with the diagnostic as evidence that the path works.
+
+**Q28. Benchmark runs and the partition ledger.**
+The A0 benchmark partitions (seed 20261007) were certified twice: once with the pre-review code (outputs deleted because of the slice leak) and once with the final code. The vault-wide partition ledger now refuses a second certification of a partition, so a future rerun of the A0 gate needs a fresh vault or a new benchmark seed.
+- **Default:** benchmark seeds are disposable; release runs use their own seeds and are never re-split (A2 release mode).
 
 ---
 
