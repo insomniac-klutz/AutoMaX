@@ -96,7 +96,7 @@ def t1_real_cheap(
     v = vault or LocalVault()
     rid = run_id or Path(run_dir).resolve().name
     verify_token(v, rid, token)
-    run = frozen_run(run_dir, v, rid)
+    run = frozen_run(run_dir, v, rid, use_pin=True)
     spec = run.spec
     if CertifyCounter(v, rid, spec.splits.max_certify_calls).remaining() > 0:
         raise WardenError(
@@ -167,6 +167,7 @@ def t1_real_cheap(
     payload: dict[str, Any] = {
         "kind": "t1_real_cheap",
         "run_id": rid,
+        "artifact_hash": run.artifact_hash,
         "guarantee_type": gtype.value,
         "claims_certification": claims_certification(gtype),
         "regime": regime.value,

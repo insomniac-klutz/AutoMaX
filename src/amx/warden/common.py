@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import shutil
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +18,7 @@ from numpy.typing import NDArray
 
 from amx.baseline.artifact import HASH_FILE, META_FILE, compute_artifact_hash
 from amx.cert.grid import TauGrid
-from amx.cert.guarantee import GuaranteeType, guarantee_type_for
+from amx.cert.guarantee import GuaranteeType, effective_guarantee_type, guarantee_type_for
 from amx.data.unitframe import UnitFrame
 from amx.loss.base import Loss
 from amx.loss.custom import load_custom_loss
@@ -31,6 +33,7 @@ from amx.split.vault import LocalVault
 
 ARTIFACT_DIR = "artifact"
 PINNED_ARTIFACT = "pinned_artifact"
+CERTIFIED_ARTIFACT = "certified_artifact.sha256"
 PRE_PROFILE_NAME = "profile_pre.json"
 CUSTOM_LOSS_NAME = "custom_loss.py"
 CUSTOM_LOSS_HASH = "custom_loss.sha256"
@@ -44,7 +47,7 @@ class WardenError(RuntimeError):
     """The run is not in a state the warden can certify."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class FrozenRun:
     run_dir: Path
     run_id: str
@@ -55,7 +58,8 @@ class FrozenRun:
     artifact_hash: str
     meta: dict[str, Any]
     grid: TauGrid
-    recommended_regime: Regime | None
+    pinned: bool
+    _staging: Path | None = field(default=None, repr=False)
 
     @property
     def dev_cov(self) -> NDArray[np.float64]:
@@ -63,45 +67,72 @@ class FrozenRun:
 
     @property
     def guarantee_type(self) -> GuaranteeType:
-        """7.1: the profiler, not the user, picks the certifier; a time structure the audit found
-        downgrades a declared exchangeable regime to ``holdout_empirical``."""
-        gtype = guarantee_type_for(self.manifest.regime, self.spec.task.family)
-        if (
-            self.recommended_regime is Regime.TEMPORAL
-            and self.manifest.regime is not Regime.TEMPORAL
-        ):
-            return GuaranteeType.HOLDOUT_EMPIRICAL
-        return gtype
+        """7.1: the audit, not the user, picks the certifier (see effective_guarantee_type)."""
+        return effective_guarantee_type(
+            self.manifest.regime,
+            self.spec.task.family,
+            time_declared=self.spec.data.time_column is not None,
+        )
 
     def regime_warnings(self) -> list[str]:
-        rec = self.recommended_regime
-        if rec is None or rec is self.manifest.regime:
+        declared = guarantee_type_for(self.manifest.regime, self.spec.task.family)
+        if self.guarantee_type is declared:
             return []
-        out = [
-            f"declared regime '{self.manifest.regime.value}' differs from the audit's "
-            f"recommendation '{rec.value}'"
+        return [
+            f"a time column is declared but the regime is '{self.manifest.regime.value}', "
+            "which differs from the audit's recommendation 'temporal'",
+            f"guarantee downgraded to '{self.guarantee_type.value}' (HANDOFF 7.1, 6.5)",
         ]
-        if self.guarantee_type is not guarantee_type_for(
-            self.manifest.regime, self.spec.task.family
-        ):
-            out.append(f"guarantee downgraded to '{self.guarantee_type.value}' (HANDOFF 7.1, 6.5)")
-        return out
+
+    def pin(self, vault: LocalVault) -> None:
+        """Pin the staged artifact into the vault exactly once (at the certify call)."""
+        if self.pinned:
+            return
+        assert self._staging is not None
+        dest = vault.run_path(self.run_id) / PINNED_ARTIFACT
+        if dest.exists():
+            raise WardenError("an artifact is already pinned for this run")
+        shutil.copytree(self.artifact_dir, dest)
+        if compute_artifact_hash(dest) != self.artifact_hash:
+            raise WardenError("the pinned copy does not match the checked artifact")
+        vault.write_text(self.run_id, CERTIFIED_ARTIFACT, self.artifact_hash, overwrite=False)
+        self.artifact_dir, self.pinned = dest, True
+
+    def cleanup(self) -> None:
+        if self._staging is not None:
+            shutil.rmtree(self._staging, ignore_errors=True)
+            self._staging = None
 
 
-def _pin_artifact(src: Path, vault: LocalVault, run_id: str) -> tuple[Path, str]:
-    """Copy the artifact into the vault and hash the COPY; the warden only uses the copy."""
-    dest = vault.run_path(run_id) / PINNED_ARTIFACT
-    if dest.exists():
-        shutil.rmtree(dest)
+def _stage(src: Path) -> tuple[Path, Path, str]:
+    """Copy the run-dir artifact to a private temporary directory OUTSIDE the vault and hash the
+    copy; its recorded hash must match (accidental edits after freeze are refused)."""
+    staging = Path(tempfile.mkdtemp(prefix="amx-stage-"))
+    os.chmod(staging, 0o700)
+    dest = staging / ARTIFACT_DIR
     shutil.copytree(src, dest)
-    return dest, compute_artifact_hash(dest)
+    digest = compute_artifact_hash(dest)
+    recorded_path = dest / HASH_FILE
+    recorded = recorded_path.read_text(encoding="utf-8").strip() if recorded_path.is_file() else ""
+    if digest != recorded:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise WardenError(f"artifact changed after freeze ({digest} != {recorded or 'missing'})")
+    return staging, dest, digest
 
 
-def frozen_run(run_dir: str | Path, vault: LocalVault, run_id: str | None = None) -> FrozenRun:
+def frozen_run(
+    run_dir: str | Path,
+    vault: LocalVault,
+    run_id: str | None = None,
+    *,
+    use_pin: bool = False,
+) -> FrozenRun:
     """Load the spec and manifest from the VAULT snapshot, never from the agent-writable run dir.
 
-    The artifact is copied into the vault and identified by the hash of that copy; its model is
-    never unpickled in the warden process (it runs in a subprocess, see runner.py).
+    Before the certify call (``use_pin=False``) the run-dir artifact is staged outside the vault
+    and hashed; :meth:`FrozenRun.pin` moves it into the vault when the call is spent. After it
+    (``use_pin=True``) only the pinned copy is used, and a run-dir artifact that differs from
+    the certified one is refused. Models are never unpickled in the warden process.
     """
     rd = Path(run_dir).resolve()
     rid = run_id or rd.name
@@ -112,29 +143,37 @@ def frozen_run(run_dir: str | Path, vault: LocalVault, run_id: str | None = None
     if manifest.regime is Regime.GROUPED and spec.data.independence_group is None:
         raise WardenError("regime 'grouped' needs a group independence unit (OQ Q2)")
     art = rd / ARTIFACT_DIR
-    if not (art / META_FILE).is_file():
-        raise WardenError(f"no frozen artifact in {art}; run `amx baseline` first")
-    pinned, digest = _pin_artifact(art, vault, rid)
-    recorded_path = pinned / HASH_FILE
-    recorded = recorded_path.read_text(encoding="utf-8").strip() if recorded_path.is_file() else ""
-    if digest != recorded:
-        raise WardenError(f"artifact changed after freeze ({digest} != {recorded or 'missing'})")
-    meta = json.loads((pinned / META_FILE).read_text(encoding="utf-8"))
+    staging: Path | None = None
+    if use_pin:
+        pinned_dir = vault.run_path(rid) / PINNED_ARTIFACT
+        if not pinned_dir.is_dir():
+            raise WardenError("no certified artifact is pinned for this run; certify first")
+        digest = compute_artifact_hash(pinned_dir)
+        if digest != vault.read_text(rid, CERTIFIED_ARTIFACT).strip():
+            raise WardenError("the pinned artifact changed after certification")
+        if (art / META_FILE).is_file() and compute_artifact_hash(art) != digest:
+            raise WardenError("the run-dir artifact differs from the certified one")
+        art_dir, pinned = pinned_dir, True
+    else:
+        if not (art / META_FILE).is_file():
+            raise WardenError(f"no frozen artifact in {art}; run `amx baseline` first")
+        staging, art_dir, digest = _stage(art)
+        pinned = False
+    meta = json.loads((art_dir / META_FILE).read_text(encoding="utf-8"))
     spec_hash = content_hash(spec)
-    if meta.get("spec_hash") != spec_hash:
-        raise WardenError(
-            "the artifact was fitted for a different TaskSpec than the vault snapshot"
-        )
     grid = TauGrid.from_spec(spec.cert)
-    if meta.get("grid_hash") != grid.hash or len(meta.get("dev_cov", [])) != grid.size:
-        raise WardenError("the artifact's dev coverage curve is not on this run's τ grid")
-    rec: Regime | None = None
-    try:
-        pre = json.loads(vault.read_text(rid, PRE_PROFILE_NAME))
-        rec = Regime(pre["recommended_regime"])
-    except Exception:
-        rec = None
-    return FrozenRun(rd, rid, spec, spec_hash, manifest, pinned, digest, meta, grid, rec)
+    problem = None
+    if meta.get("spec_hash") != spec_hash:
+        problem = "the artifact was fitted for a different TaskSpec than the vault snapshot"
+    elif meta.get("grid_hash") != grid.hash or len(meta.get("dev_cov", [])) != grid.size:
+        problem = "the artifact's dev coverage curve is not on this run's τ grid"
+    if problem is not None:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+        raise WardenError(problem)
+    return FrozenRun(
+        rd, rid, spec, spec_hash, manifest, art_dir, digest, meta, grid, pinned, staging
+    )
 
 
 def load_calib(vault: LocalVault, run: FrozenRun) -> UnitFrame:

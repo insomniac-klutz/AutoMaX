@@ -107,6 +107,10 @@ def dataset(
     }
 
 
+def summary_names(datasets: str) -> list[str]:
+    return [n.strip() for n in datasets.split(",") if n.strip()]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=ROOT / "runs" / "gate-a0")
@@ -139,7 +143,7 @@ def main() -> int:
     )
     summary["t1_real_cheap_passed"] = real_ok
     (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str) + "\n")
-    if args.skip_synthetic:
+    if args.skip_synthetic or set(summary_names(args.datasets)) != set(DATASETS):
         return 2  # incomplete: not a gate verdict
     syn = summary["synthetic"]
     ok = (

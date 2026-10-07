@@ -165,7 +165,7 @@ def _full_run(spec: Path, run: Path) -> dict[str, Any]:
     early = _invoke(
         "simulate", "--t1", "--real", "--run", run, "--token", token, "--resplits", "5", ok=False
     )
-    assert early.exit_code == 2 and "budget" in early.output  # calib budget still open
+    assert early.exit_code == 2 and "certify" in early.output  # calib budget still open
 
     cert = json.loads(_invoke("certify", "--run", run, "--freeze", "--token", token).stdout)
     again = _invoke("certify", "--run", run, "--freeze", "--token", token, ok=False)
@@ -199,9 +199,10 @@ def _no_held_out_values_in_run_dir(run: Path, vault_root: Path) -> None:
     for fold in ("calib", "sealed"):
         uf = vault.read_fold(rid, fold)
         held_ids |= set(uf.ids.tolist())
-        y = uf.target
-        if y.dtype.kind == "f":
-            held_vals |= {repr(float(v)) for v in y if len(repr(float(v))) >= 7}
+        cols = [uf.target] + [uf.column(c) for c in uf.roles.inputs]
+        for col in cols:
+            if np.asarray(col).dtype.kind == "f":
+                held_vals |= {repr(float(v)) for v in col if len(repr(float(v))) >= 7}
     dev_ids = set(pq.read_table(run / "data" / "dev.parquet").column(0).to_pylist())
     assert not held_ids & dev_ids
     token = re.compile(r"[A-Za-z0-9_.+-]+")

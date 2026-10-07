@@ -1,9 +1,10 @@
-"""Vault-wide ledger of certified calibration partitions (review finding: budget per partition).
+"""Vault-wide ledger of certified calibration partitions (review findings on budget bypass).
 
 The per-run certify counter can be sidestepped by re-splitting the same data into a new run
-directory: the split is deterministic, so the new run gets the same calibration fold with a
-fresh counter. The ledger keys the budget by the partition itself: sha256 of the data hash and
-the sorted calibration unit ids. A partition certified once (in any run) is refused afterwards.
+directory (the split is deterministic), by re-splitting with another seed (overlapping
+calibration sets), or by adding an irrelevant column (a new data hash). The ledger therefore
+fingerprints the calibration units themselves, by unit id and gold label, and refuses a new
+certification whose calibration set overlaps an earlier one by more than ``MAX_OVERLAP``.
 """
 
 from __future__ import annotations
@@ -20,16 +21,25 @@ from typing import Any
 from amx.split.vault import LocalVault
 
 LEDGER_DIR = "_ledger"
-LEDGER_FILE = "calib_partitions.jsonl"
+INDEX_FILE = "calib_partitions.jsonl"
+MAX_OVERLAP = 0.01
 
 
 class PartitionUsedError(PermissionError):
-    """This calibration partition has already been certified."""
+    """This calibration data has already been certified (in this or another run)."""
 
 
-def partition_key(data_hash: str, calib_ids: Iterable[str]) -> str:
-    payload = data_hash + "\n" + "\n".join(sorted(str(i) for i in calib_ids))
-    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+def fingerprints(ids: Iterable[Any], gold: Iterable[Any]) -> list[str]:
+    """Sorted 64-bit fingerprints of (unit id, gold label) pairs."""
+    out = {
+        hashlib.sha256(f"{i}\x00{g!r}".encode()).hexdigest()[:16]
+        for i, g in zip(ids, gold, strict=True)
+    }
+    return sorted(out)
+
+
+def partition_key(fps: Iterable[str]) -> str:
+    return "sha256:" + hashlib.sha256("\n".join(sorted(fps)).encode()).hexdigest()
 
 
 def _dir(vault: LocalVault) -> Path:
@@ -42,37 +52,51 @@ def _dir(vault: LocalVault) -> Path:
 @contextmanager
 def _locked(vault: LocalVault) -> Iterator[Path]:
     d = _dir(vault)
-    lock = d / (LEDGER_FILE + ".lock")
-    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    fd = os.open(d / (INDEX_FILE + ".lock"), os.O_RDWR | os.O_CREAT, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
-        yield d / LEDGER_FILE
+        yield d
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
 
-def _records(path: Path) -> list[dict[str, Any]]:
+def _index(d: Path) -> list[dict[str, Any]]:
+    path = d / INDEX_FILE
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
-def claim_partition(vault: LocalVault, key: str, run_id: str) -> None:
-    """Record that ``run_id`` certifies partition ``key``; refuse if any run already did."""
-    with _locked(vault) as path:
-        for rec in _records(path):
-            if rec["key"] == key:
+def _write_private(path: Path, text: str, *, append: bool = False) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if append else os.O_TRUNC)
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, "a" if append else "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.chmod(path, 0o600)
+
+
+def claim_partition(vault: LocalVault, fps: list[str], run_id: str) -> str:
+    """Record ``run_id``'s calibration set; refuse if it overlaps an earlier claim too much."""
+    key = partition_key(fps)
+    mine = set(fps)
+    with _locked(vault) as d:
+        for rec in _index(d):
+            if "file" not in rec:  # key-only record from an earlier ledger format
+                share = 1.0 if rec.get("key") == key else 0.0
+            else:
+                prev = set((d / rec["file"]).read_text(encoding="utf-8").split())
+                share = len(mine & prev) / max(len(mine), 1)
+            if share > MAX_OVERLAP:
                 raise PartitionUsedError(
-                    f"this calibration partition was already certified by run '{rec['run_id']}'; "
-                    "a new certify call needs fresh calibration data (OQ Q1)"
+                    f"{100 * share:.1f}% of this calibration data was already certified by run "
+                    f"'{rec['run_id']}'; a new certify call needs fresh calibration data (Q1)"
                 )
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        with os.fdopen(fd, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"key": key, "run_id": run_id}) + "\n")
-        os.chmod(path, 0o600)
-
-
-def partition_claimed(vault: LocalVault, key: str) -> bool:
-    with _locked(vault) as path:
-        return any(rec["key"] == key for rec in _records(path))
+        name = key.split(":", 1)[1][:24] + ".fps"
+        _write_private(d / name, "\n".join(fps) + "\n")
+        _write_private(
+            d / INDEX_FILE,
+            json.dumps({"key": key, "run_id": run_id, "file": name}) + "\n",
+            append=True,
+        )
+    return key

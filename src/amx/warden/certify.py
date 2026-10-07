@@ -32,9 +32,9 @@ from amx.warden.common import (
     load_calib,
     warden_loss,
 )
-from amx.warden.ledger import claim_partition, partition_key
+from amx.warden.ledger import claim_partition, fingerprints
 from amx.warden.runner import run_resolver
-from amx.warden.token import verify_token
+from amx.warden.token import rotation_count, verify_token
 
 log = get_logger(__name__)
 
@@ -103,6 +103,15 @@ def certify_run(
     rid = run_id or Path(run_dir).resolve().name
     verify_token(v, rid, token)
     run = frozen_run(run_dir, v, rid)
+    try:
+        return _certify(run, v, rid, confirm_loss=confirm_loss, force=force)
+    finally:
+        run.cleanup()
+
+
+def _certify(
+    run: FrozenRun, v: LocalVault, rid: str, *, confirm_loss: bool, force: bool
+) -> Certificate:
     spec = run.spec
     loss, loss_digest = warden_loss(v, run, confirm_loss=confirm_loss)
     calib = load_calib(v, run)
@@ -117,12 +126,12 @@ def certify_run(
         )
     slices_by = slice_columns(run, calib)
 
-    key = partition_key(run.manifest.data_hash, calib.ids.tolist())
     counter = CertifyCounter(v, rid, spec.splits.max_certify_calls)
     if counter.remaining() == 0:
         counter.acquire("certify")  # raises CertifyBudgetExhausted with the counter's message
-    claim_partition(v, key, rid)
+    key = claim_partition(v, fingerprints(calib.ids.tolist(), calib.target.tolist()), rid)
     call = counter.acquire("certify")
+    run.pin(v)
     log.info("certify call %d of %d for run %s", call, spec.splits.max_certify_calls, rid)
 
     out = run_resolver(run.artifact_dir, calib.without_target(), expected_hash=run.artifact_hash)
@@ -153,7 +162,7 @@ def certify_run(
                     committed,
                     alpha=band.alpha,
                     binary=loss.is_binary,
-                    descriptive=group_col is not None,
+                    groups=groups,
                 )
             )
         slices.append(per)
@@ -183,6 +192,7 @@ def certify_run(
             "loss": {"name": loss.name, "binary": loss.is_binary, "confirmed": confirm_loss},
             "forced_bands": blocked if force else [],
             "calib_partition": key,
+            "token_rotations": rotation_count(v, rid),
         },
     )
     extra_warnings = [*run.regime_warnings(), *(f"forced: {b}" for b in blocked if force)]

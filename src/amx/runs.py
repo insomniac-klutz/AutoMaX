@@ -75,24 +75,38 @@ def profile_pre(spec_path: str | Path) -> dict[str, Any]:
     return {"pre": pre.model_dump(mode="json"), "resolved_regime": resolve_regime(spec, pre).value}
 
 
-def _snapshot_custom_loss(
-    spec: TaskSpec, spec_path: Path, run_dir: Path, vault: LocalVault, run_id: str
-) -> None:
-    """Copy a custom loss next to the run's spec copy and into the vault, with its hash.
-
-    The path is resolved against the spec file's directory (like ``data.uri``). Dev-side steps
-    load the run-dir copy; the warden loads only the vault copy and checks its hash.
-    """
+def _read_custom_loss(spec: TaskSpec, spec_path: Path) -> tuple[Path, bytes] | None:
+    """Resolve and read a custom loss against the spec file's directory (like ``data.uri``)."""
     ls = spec.task.loss
     if ls.kind is not LossKind.CUSTOM:
-        return
+        return None
     assert ls.path is not None
     rel = Path(ls.path)
-    src = rel if rel.is_absolute() else spec_path.resolve().parent / rel
+    if rel.is_absolute() or ".." in rel.parts:
+        raise RunError("a custom loss path must be relative to the spec file, without '..'")
+    src = spec_path.resolve().parent / rel
     if not src.is_file():
         raise RunError(f"custom loss file not found: {src}")
     data = src.read_bytes()
-    dest = run_dir / (rel.name if rel.is_absolute() else rel)
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RunError(f"custom loss file is not UTF-8 text: {src}") from exc
+    return rel, data
+
+
+def _snapshot_custom_loss(
+    loss_file: tuple[Path, bytes] | None, run_dir: Path, vault: LocalVault, run_id: str
+) -> None:
+    """Copy a custom loss next to the run's spec copy and into the vault, with its hash.
+
+    Dev-side steps load the run-dir copy; the warden loads only the vault copy and checks its
+    hash.
+    """
+    if loss_file is None:
+        return
+    rel, data = loss_file
+    dest = run_dir / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
     vault.write_text(run_id, CUSTOM_LOSS_NAME, data.decode("utf-8"))
@@ -119,13 +133,20 @@ def split(
     regime = resolve_regime(spec, pre)
     if regime is Regime.GROUPED and spec.data.independence_group is None:
         raise RunError("regime 'grouped' needs independence_unit: group:<col> (OQ Q2)")
+    if spec.splits.regime is Regime.AUTO and pre.group_candidates and not spec.data.group_columns:
+        raise RunError(
+            f"id-like columns {pre.group_candidates} repeat across units. If they identify "
+            "entities, declare them as group_columns with independence_unit group:<col>; if "
+            "units are independent, declare regime: iid explicitly (HANDOFF 8.2)"
+        )
+    loss_file = _read_custom_loss(spec, sp)
     rd = Path(run_dir).resolve()
     rid = rd.name
     v = vault or LocalVault()
     res = split_run(spec, uf, rd, v, rid, regime=regime)
     pre_json = pre.model_dump(mode="json")
     v.write_text(rid, PRE_PROFILE_NAME, json.dumps(pre_json, indent=2))
-    _snapshot_custom_loss(spec, sp, rd, v, rid)
+    _snapshot_custom_loss(loss_file, rd, v, rid)
     _write_json(rd / PROFILE_NAME, {"pre": pre_json})
     counts = res.manifest.counts.model_dump()
     log.info("split %s: regime %s, counts %s", rid, regime.value, counts)
@@ -210,6 +231,7 @@ def profile_feasibility(run_dir: str | Path, *, confirm_loss: bool = False) -> F
         regime=manifest.regime,
         dev_target=dev.target,
         n_calib=n_calib,
+        n_units_total=manifest.counts.dev + manifest.counts.calib + manifest.counts.sealed,
         loss_fn=loss,
         loss_is_binary=loss.is_binary,
         **kwargs,

@@ -11,7 +11,9 @@ Slice labels are computed so that no raw calibration value reaches the certifica
 * a slice value with no committed unit is not reported.
 
 In group mode (``independence_unit: group:<col>``) unit-level bounds would assume independent
-units, so slice numbers are descriptive only (no bound, no 2α flag).
+units, so a slice's statistic is the mean over its groups of each group's mean committed loss,
+and its bounds are Hoeffding–Bentkus over the number of groups (matching the certificate's
+group-weighted estimand).
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from typing import Any, Literal
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from amx.cert.bounds import bound_name, risk_lower, risk_upper
+from amx.cert.bounds import bound_name, hb_lower, hb_upper, risk_lower, risk_upper
 from amx.cert.nmin import n_min
 
 SliceFlag = Literal["insufficient_n", "upper_gt_2alpha", "lower_gt_2alpha"]
@@ -89,6 +91,7 @@ def slice_risks(
     alpha: float,
     binary: bool,
     descriptive: bool = False,
+    groups: ArrayLike | None = None,
 ) -> list[SliceRisk]:
     """Empirical selective risk per slice label among committed units.
 
@@ -101,21 +104,31 @@ def slice_risks(
     loss = np.asarray(losses, dtype=np.float64).reshape(-1)
     com = np.asarray(committed, dtype=bool).reshape(-1)
     small = n_min(min(2 * alpha, 0.99), 0.05)
-    bname = "descriptive" if descriptive else bound_name(binary)
+    grp = None if groups is None else np.asarray(groups, dtype=object).astype(str).reshape(-1)
+    if descriptive:
+        bname = "descriptive"
+    elif grp is not None:
+        bname = "hoeffding_bentkus_groups"
+    else:
+        bname = bound_name(binary)
     out: list[SliceRisk] = []
     for value in sorted(set(lab.tolist())):
         sel = com & (lab == value)
-        n = int(sel.sum())
-        if n == 0:
+        if not np.any(sel):
             continue
-        total = float(loss[sel].sum())
+        if grp is not None:
+            _, inv = np.unique(grp[sel], return_inverse=True)
+            means = np.bincount(inv, weights=loss[sel]) / np.bincount(inv)
+            n, total = int(means.size), float(means.sum())
+        else:
+            n, total = int(sel.sum()), float(loss[sel].sum())
         if descriptive:
             out.append(SliceRisk(name, value, n, total / n, None, bname, None))
             continue
-        upper = risk_upper(total, n, binary=binary)
+        upper = hb_upper(total, n) if grp is not None else risk_upper(total, n, binary=binary)
         flag: SliceFlag | None
         if n < small:
-            lower = risk_lower(total, n, binary=binary)
+            lower = hb_lower(total, n) if grp is not None else risk_lower(total, n, binary=binary)
             flag = "lower_gt_2alpha" if lower > 2 * alpha else "insufficient_n"
         elif upper > 2 * alpha:
             flag = "upper_gt_2alpha"

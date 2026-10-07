@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 from amx.cert.bounds import cp_lower, cp_upper, hb_lower, hb_upper
 from amx.cert.budget import DeltaBudget
-from amx.cert.guarantee import GuaranteeType, guarantee_type_for
+from amx.cert.guarantee import GuaranteeType, effective_guarantee_type, guarantee_type_for
 from amx.cert.ltt import start_index
 from amx.cert.nmin import n_min
 from amx.spec.enums import Family, Regime, TargetKind
@@ -114,6 +114,7 @@ def feasibility(
     regime: Regime,
     dev_target: ArrayLike,
     n_calib: int,
+    n_units_total: int | None = None,
     loss_fn: object,
     loss_is_binary: bool,
     tau: ArrayLike | None = None,
@@ -130,7 +131,14 @@ def feasibility(
     summary, warnings = _target_summary(y, spec.data.target.kind)
     budget = DeltaBudget(spec.bands.delta, spec.bands.m, spec.cert.call_policy)
     dj = budget.delta_per_band
-    gtype = guarantee_type_for(regime, spec.task.family)
+    gtype = effective_guarantee_type(
+        regime, spec.task.family, time_declared=spec.data.time_column is not None
+    )
+    if gtype is not guarantee_type_for(regime, spec.task.family):
+        warnings.append(
+            f"a time column is declared with regime '{regime.value}': the certificate will be "
+            f"downgraded to '{gtype.value}' (HANDOFF 7.1)"
+        )
     recs: list[str] = []
 
     const = _constant_losses(y, spec, loss_fn)
@@ -218,7 +226,8 @@ def feasibility(
         independence_unit="groups" if spec.data.independence_group else "units",
         bands=bands,
         requires_force=force,
-        requires_allow_small=(n_dev + n_calib) < 3000,
+        requires_allow_small=(n_units_total if n_units_total is not None else n_dev + n_calib)
+        < 3000,
         recommendations=recs,
         warnings=warnings,
     )

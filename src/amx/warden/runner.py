@@ -55,11 +55,16 @@ def run_resolver(
     """Return a frame with columns unit_id, value, score in the order of ``units``."""
     roles = units.roles
     table = units.table.select([roles.unit_id, *roles.inputs])
-    if roles.target is not None and roles.target in table.column_names:
-        raise ResolverError("refusing to pass a target column to the resolver")
+    if roles.target is not None:
+        raise ResolverError(
+            "refusing to resolve units that carry a target; pass units.without_target()"
+        )
     tmp = Path(tempfile.mkdtemp(prefix="amx-resolve-"))
     try:
         os.chmod(tmp, 0o700)
+        # the resolver gets its own copy of the artifact, so no path it sees points into the vault
+        art = tmp / "artifact"
+        shutil.copytree(artifact_dir, art)
         in_path, out_path = tmp / "inputs.parquet", tmp / "out.parquet"
         pq.write_table(table, in_path)
         cmd = [
@@ -67,7 +72,7 @@ def run_resolver(
             "-I",
             "-m",
             "amx.baseline.resolve",
-            str(artifact_dir),
+            str(art),
             str(in_path),
             str(out_path),
             "--expected-hash",

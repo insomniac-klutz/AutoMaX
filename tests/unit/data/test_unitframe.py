@@ -113,3 +113,14 @@ def test_dictionary_columns_are_decoded_so_take_cannot_leak() -> None:
     sub = uf.take([0])
     assert not pa.types.is_dictionary(sub.table.column("c").type)
     assert sub.table.column("c").to_pylist() == ["dev_only"]
+
+
+def test_content_hash_and_group_keys_are_unambiguous() -> None:
+    r = Roles("id", "y", ("s",))
+    t1 = pa.table({"id": ["a", "b"], "s": ["x\x1ey", "z"], "y": [0, 1]})
+    t2 = pa.table({"id": ["a", "b"], "s": ["x", "y\x1ez"], "y": [0, 1]})
+    assert UnitFrame(t1, r).content_hash() != UnitFrame(t2, r).content_hash()
+    rg = Roles("id", "y", (), group_columns=("g1", "g2"))
+    k1 = UnitFrame(pa.table({"id": ["a"], "g1": ["p\x1f"], "g2": ["q"], "y": [0]}), rg).groups
+    k2 = UnitFrame(pa.table({"id": ["a"], "g1": ["p"], "g2": ["\x1fq"], "y": [0]}), rg).groups
+    assert k1 is not None and k2 is not None and k1[0] != k2[0]

@@ -8,6 +8,7 @@ import pyarrow as pa
 import pytest
 
 from amx.data import UnitFrame
+from amx.data.unitframe import Roles
 from amx.spec import Regime, TargetKind, parse_taskspec
 from amx.split import (
     DropReason,
@@ -414,3 +415,29 @@ def test_stratum_codes() -> None:
     assert np.all(np.bincount(bins)[:10] == 10)
     assert np.all(stratum_codes(cats, TargetKind.SPANS) == 0)
     assert np.all(stratum_codes(cats, None) == 0)
+
+
+def test_grouped_keeps_every_group_column_whole() -> None:
+    """With group_columns [a, b], neither an 'a' nor a 'b' value may straddle folds."""
+    from tests.unit.split.helpers import make_spec as _spec
+
+    n = 3000
+    rng = np.random.default_rng(3)
+    a = rng.integers(0, 600, n)
+    b = a // 2  # b links pairs of a-groups
+    df = pd.DataFrame(
+        {
+            "id": [f"u{i}" for i in range(n)],
+            "x": rng.normal(size=n),
+            "a": a,
+            "b": b,
+            "y": rng.integers(0, 2, n),
+        }
+    )
+    uf = UnitFrame.from_pandas(df, Roles("id", "y", ("x",), group_columns=("a", "b")))
+    spec = _spec("grouped", group_columns=["a", "b"])
+    res = assign_folds(uf, spec, "grouped")
+    folds = np.asarray(res.folds)
+    for col in ("a", "b"):
+        per = pd.DataFrame({"v": df[col], "f": folds}).groupby("v")["f"].nunique()
+        assert int(per.max()) == 1, col

@@ -43,6 +43,18 @@ def guarantee_type_for(regime: Regime, family: Family) -> GuaranteeType:
     return GuaranteeType.PAC_HIGH_PROB
 
 
+def effective_guarantee_type(
+    regime: Regime, family: Family, *, time_declared: bool
+) -> GuaranteeType:
+    """7.1 with the exchangeability audit applied: a declared time column means future units
+    come after past ones, so an exchangeable (iid/grouped) regime is downgraded to
+    ``holdout_empirical`` (6.5: warnings must include any regime downgrade)."""
+    gtype = guarantee_type_for(regime, family)
+    if time_declared and regime not in (Regime.TEMPORAL, Regime.BLOCKED):
+        return GuaranteeType.HOLDOUT_EMPIRICAL
+    return gtype
+
+
 def base_assumptions(regime: Regime, *, group_column: str | None) -> list[str]:
     out = [
         f"calibration units and future units are exchangeable under regime={regime.value}",
