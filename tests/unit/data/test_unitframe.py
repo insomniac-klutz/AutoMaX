@@ -104,3 +104,12 @@ def test_input_row_keys_detect_duplicates() -> None:
     )
     keys = UnitFrame.from_pandas(df, Roles("id", "y", ("a", "b"))).input_row_keys()
     assert keys[0] == keys[1] != keys[2]
+
+
+def test_dictionary_columns_are_decoded_so_take_cannot_leak() -> None:
+    cat = pa.array(["dev_only", "held_out"]).dictionary_encode()
+    tbl = pa.table({"id": ["a", "b"], "c": cat, "y": [0, 1]})
+    uf = UnitFrame(tbl, Roles("id", "y", ("c",)))
+    sub = uf.take([0])
+    assert not pa.types.is_dictionary(sub.table.column("c").type)
+    assert sub.table.column("c").to_pylist() == ["dev_only"]

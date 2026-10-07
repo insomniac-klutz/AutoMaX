@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+
 from amx.data.fetch import fetch
 
 FILES = {

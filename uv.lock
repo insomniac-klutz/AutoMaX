@@ -127,6 +127,7 @@ dev = [
     { name = "ruff" },
     { name = "scipy-stubs", version = "1.17.1.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy-stubs", version = "1.18.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "threadpoolctl" },
     { name = "types-pyyaml" },
 ]
 
@@ -148,6 +149,7 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.4" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "scipy-stubs", marker = "extra == 'dev'" },
+    { name = "threadpoolctl", marker = "extra == 'dev'", specifier = ">=3" },
     { name = "typer", specifier = ">=0.12" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
 ]

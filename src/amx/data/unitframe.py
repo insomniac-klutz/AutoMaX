@@ -76,7 +76,7 @@ class UnitFrame:
             raise UnitFrameError(f"unit id column '{roles.unit_id}' has nulls")
         if pc.count_distinct(ids).as_py() != table.num_rows:
             raise UnitFrameError(f"unit id column '{roles.unit_id}' has duplicate values")
-        self._table = table.select(list(roles.role_columns)).combine_chunks()
+        self._table = _decode_dictionaries(table.select(list(roles.role_columns))).combine_chunks()
         self._roles = roles
 
     # construction -----------------------------------------------------------------------
@@ -206,6 +206,21 @@ class UnitFrame:
         if df.shape[1] == 0:
             return np.zeros(self.n, dtype=np.uint64)
         return np.asarray(pd.util.hash_pandas_object(df, index=False).to_numpy(), dtype=np.uint64)
+
+
+def _decode_dictionaries(table: pa.Table) -> pa.Table:
+    """Replace dictionary-encoded columns by their plain values.
+
+    A dictionary column keeps its whole dictionary through ``take``, so a fold written from it
+    would carry values of units outside the fold. Decoding at construction closes that leak.
+    """
+    cols = []
+    for name in table.column_names:
+        col = table.column(name)
+        if pa.types.is_dictionary(col.type):
+            col = col.cast(col.type.value_type)
+        cols.append(col)
+    return pa.table(cols, names=table.column_names)
 
 
 def _column_bytes(col: pa.ChunkedArray) -> bytes:

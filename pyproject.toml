@@ -32,6 +32,7 @@ dev = [
     "scipy-stubs",
     "pandas-stubs",
     "types-PyYAML",
+    "threadpoolctl>=3",
     "pre-commit>=3.7",
 ]
 
@@ -49,6 +50,9 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "NPY", "T20"]
 ignore = ["N803", "N806", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["amx"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20"]

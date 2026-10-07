@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
 from amx.data.fetch import fetch
 
 URLS = ["https://storage.googleapis.com/tensorflow/tf-keras-datasets/california_housing.npz"]
