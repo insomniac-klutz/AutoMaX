@@ -31,7 +31,7 @@ import platform
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -51,7 +51,10 @@ HASH_FILE = "artifact.sha256"
 ARTIFACT_FORMAT = 1
 REQUIRED_META = ("family", "roles", "spec_hash", "grid_hash", "dev_cov")
 _VERSIONED = ("automax", "numpy", "scipy", "pandas", "pyarrow", "scikit-learn", "joblib")
-_TIME_KEY = re.compile(r"time|date|created|stamp", re.IGNORECASE)
+_TIME_TOKENS = frozenset(
+    {"time", "date", "datetime", "timestamp", "created", "updated", "stamp", "when", "at"}
+)
+_KEY_SPLIT = re.compile(r"[_\W]+|(?<=[a-z0-9])(?=[A-Z])")
 _COLUMN_NAMES = "roles"
 
 
@@ -115,19 +118,27 @@ def _is_iso_datetime(text: str) -> bool:
     return True
 
 
+def _is_time_key(key: str) -> bool:
+    """True when a token of the key (split at ``_``, punctuation and camelCase) names a time.
+
+    Token matching keeps ordinary keys such as ``runtime_s``, ``n_candidates`` or ``validated``.
+    """
+    return any(tok.lower() in _TIME_TOKENS for tok in _KEY_SPLIT.split(key) if tok)
+
+
 def _time_stamps(value: Any, path: str = "") -> list[str]:
     """Paths in ``value`` whose key names a time or whose string value is an ISO-8601 date."""
     found: list[str] = []
     if isinstance(value, Mapping):
         for key, sub in value.items():
             where = f"{path}.{key}" if path else str(key)
-            if _TIME_KEY.search(str(key)):
+            if _is_time_key(str(key)):
                 found.append(where)
             found.extend(_time_stamps(sub, where))
     elif isinstance(value, list | tuple):
         for i, sub in enumerate(value):
             found.extend(_time_stamps(sub, f"{path}[{i}]"))
-    elif isinstance(value, str) and _is_iso_datetime(value):
+    elif (isinstance(value, str) and _is_iso_datetime(value)) or isinstance(value, date | datetime):
         found.append(path)
     return found
 
@@ -190,9 +201,12 @@ def freeze(predictor: ScoredPredictor, out_dir: str | Path, meta: Mapping[str, A
         raise ArtifactError(
             f"meta must hold no time stamp (the same fit must give the same hash): {stamps}"
         )
+    try:
+        text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    except (TypeError, ValueError) as exc:
+        raise ArtifactError(f"meta is not plain JSON: {exc}") from exc
     root.mkdir(parents=True, exist_ok=True)
     joblib.dump(predictor, root / MODEL_FILE)
-    text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
     (root / META_FILE).write_text(text, encoding="utf-8")
     digest = compute_artifact_hash(root)
     (root / HASH_FILE).write_text(digest + "\n", encoding="utf-8")

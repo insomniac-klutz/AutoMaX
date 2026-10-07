@@ -227,7 +227,8 @@ def test_freeze_refusals(clf_split: Split, clf_artifact: tuple[Path, str], tmp_p
         {"frozen": "2026-10-07"},
         {"run": {"Timestamp": 1760000000}},
         {"run": {"notes": ["ok", "20261007T123000"]}},
-        {"lastUpdate": 3},
+        {"updatedAt": 3},
+        {"run_date": "x"},
         {"versions": {"numpy": "2026-01-01"}},
     ],
 )
@@ -239,6 +240,30 @@ def test_freeze_refuses_time_stamps_in_meta(
     with pytest.raises(ArtifactError, match="time stamp"):
         freeze(model, tmp_path / "a", meta)
     assert not (tmp_path / "a").exists()
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"runtime_s": 1.5}, {"n_candidates": 3}, {"validated": True}, {"timeout": 9}],
+)
+def test_freeze_accepts_ordinary_keys_containing_time_letters(
+    clf_split: Split, tmp_path: Path, extra: dict[str, object]
+) -> None:
+    model = fit_clf(clf_split, 3)
+    meta = artifact_meta(model, spec_hash="sha256:spec", grid=GRID, seed=3, extra=extra)
+    assert freeze(model, tmp_path / "ok", meta).startswith("sha256:")
+
+
+def test_freeze_refuses_datetime_objects_before_writing(clf_split: Split, tmp_path: Path) -> None:
+    import datetime as dt
+
+    model = fit_clf(clf_split, 3)
+    meta = artifact_meta(
+        model, spec_hash="sha256:spec", grid=GRID, seed=3, extra={"note": dt.date(2026, 1, 1)}
+    )
+    with pytest.raises(ArtifactError):
+        freeze(model, tmp_path / "d", meta)
+    assert not (tmp_path / "d").exists()
 
 
 def test_freeze_accepts_time_role_and_date_like_column_names(tmp_path: Path) -> None:
