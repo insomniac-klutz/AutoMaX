@@ -1,0 +1,27 @@
+# Industry and domain nouns that must not appear in src/, claude-plugin/ or programs/ (HANDOFF 12 T4,
+# decision D17). Dataset names and dataset column names are added automatically from datasets/.
+# One lowercase word per line; matched as whole words, case-insensitively.
+patient
+patients
+clinical
+clinic
+hospital
+medical
+medicine
+diagnosis
+diagnostic_code
+disease
+symptom
+triage
+bank
+banking
+loan
+credit
+insurance
+retail
+customer
+census
+housing
+electricity
+income
+salary
