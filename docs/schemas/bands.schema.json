@@ -1,0 +1,591 @@
+{
+  "$defs": {
+    "BandEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "alpha": {
+          "title": "Alpha",
+          "type": "number"
+        },
+        "coverage_at_certified_tau": {
+          "$ref": "#/$defs/Interval"
+        },
+        "coverage_sealed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Interval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "delta_j": {
+          "title": "Delta J",
+          "type": "number"
+        },
+        "n_committed_calib": {
+          "title": "N Committed Calib",
+          "type": "integer"
+        },
+        "n_independent_calib": {
+          "title": "N Independent Calib",
+          "type": "integer"
+        },
+        "n_min_required": {
+          "title": "N Min Required",
+          "type": "integer"
+        },
+        "p_value_raw": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "P Value Raw"
+        },
+        "per_slice": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SliceEntry"
+          },
+          "title": "Per Slice",
+          "type": "array"
+        },
+        "policy": {
+          "$ref": "#/$defs/Policy"
+        },
+        "risk_calib": {
+          "$ref": "#/$defs/RiskEstimate"
+        },
+        "risk_calib_unit_weighted": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Risk Calib Unit Weighted"
+        },
+        "risk_sealed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RiskEstimate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_band": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Band"
+        },
+        "start_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start Index"
+        },
+        "status": {
+          "$ref": "#/$defs/BandStatus"
+        },
+        "stop_reason": {
+          "$ref": "#/$defs/StopReason"
+        },
+        "tau_hat": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tau Hat"
+        },
+        "tau_hat_raw": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tau Hat Raw"
+        },
+        "tests_run": {
+          "title": "Tests Run",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "alpha",
+        "policy",
+        "delta_j",
+        "status",
+        "tau_hat",
+        "tau_hat_raw",
+        "source_band",
+        "stop_reason",
+        "n_min_required",
+        "start_index",
+        "tests_run",
+        "p_value_raw",
+        "n_committed_calib",
+        "n_independent_calib",
+        "coverage_at_certified_tau",
+        "risk_calib",
+        "risk_calib_unit_weighted"
+      ],
+      "title": "BandEntry",
+      "type": "object"
+    },
+    "BandStatus": {
+      "enum": [
+        "certified",
+        "inherited",
+        "uncertified"
+      ],
+      "title": "BandStatus",
+      "type": "string"
+    },
+    "CallPolicy": {
+      "description": "How certify calls share the failure budget (OQ Q1).",
+      "enum": [
+        "single",
+        "preregistered",
+        "sliced"
+      ],
+      "title": "CallPolicy",
+      "type": "string"
+    },
+    "FrontierPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "title": "Coverage",
+          "type": "number"
+        },
+        "risk": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Risk"
+        },
+        "tau": {
+          "title": "Tau",
+          "type": "number"
+        }
+      },
+      "required": [
+        "tau",
+        "coverage",
+        "risk"
+      ],
+      "title": "FrontierPoint",
+      "type": "object"
+    },
+    "Guarantee": {
+      "additionalProperties": false,
+      "properties": {
+        "assumptions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "calib_independent_n": {
+          "title": "Calib Independent N",
+          "type": "integer"
+        },
+        "calib_n": {
+          "title": "Calib N",
+          "type": "integer"
+        },
+        "call_policy": {
+          "$ref": "#/$defs/CallPolicy",
+          "default": "single"
+        },
+        "cert_mode": {
+          "const": "fixed_sequence",
+          "default": "fixed_sequence",
+          "title": "Cert Mode",
+          "type": "string"
+        },
+        "certify_calls_max": {
+          "title": "Certify Calls Max",
+          "type": "integer"
+        },
+        "certify_calls_used": {
+          "title": "Certify Calls Used",
+          "type": "integer"
+        },
+        "delta": {
+          "title": "Delta",
+          "type": "number"
+        },
+        "delta_per_band": {
+          "title": "Delta Per Band",
+          "type": "number"
+        },
+        "estimand": {
+          "enum": [
+            "unit_weighted",
+            "group_weighted"
+          ],
+          "title": "Estimand",
+          "type": "string"
+        },
+        "grid_hash": {
+          "title": "Grid Hash",
+          "type": "string"
+        },
+        "p_value_family": {
+          "enum": [
+            "binomial",
+            "hoeffding_bentkus"
+          ],
+          "title": "P Value Family",
+          "type": "string"
+        },
+        "regime": {
+          "$ref": "#/$defs/Regime"
+        },
+        "sealed_n": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sealed N"
+        },
+        "simultaneous_level": {
+          "title": "Simultaneous Level",
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/$defs/GuaranteeType"
+        }
+      },
+      "required": [
+        "type",
+        "delta",
+        "delta_per_band",
+        "simultaneous_level",
+        "regime",
+        "estimand",
+        "p_value_family",
+        "certify_calls_used",
+        "certify_calls_max",
+        "calib_n",
+        "calib_independent_n",
+        "grid_hash",
+        "assumptions"
+      ],
+      "title": "Guarantee",
+      "type": "object"
+    },
+    "GuaranteeType": {
+      "enum": [
+        "pac_high_prob",
+        "expectation",
+        "long_run_frequency",
+        "holdout_empirical",
+        "none"
+      ],
+      "title": "GuaranteeType",
+      "type": "string"
+    },
+    "Interval": {
+      "additionalProperties": false,
+      "properties": {
+        "ci95": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci95"
+        },
+        "est": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Est"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "est",
+        "ci95",
+        "method"
+      ],
+      "title": "Interval",
+      "type": "object"
+    },
+    "Policy": {
+      "enum": [
+        "auto",
+        "audit"
+      ],
+      "title": "Policy",
+      "type": "string"
+    },
+    "Regime": {
+      "enum": [
+        "auto",
+        "iid",
+        "grouped",
+        "temporal",
+        "blocked"
+      ],
+      "title": "Regime",
+      "type": "string"
+    },
+    "RiskEstimate": {
+      "additionalProperties": false,
+      "properties": {
+        "bound": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bound"
+        },
+        "est": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Est"
+        },
+        "upper95": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upper95"
+        }
+      },
+      "required": [
+        "est"
+      ],
+      "title": "RiskEstimate",
+      "type": "object"
+    },
+    "SliceEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "bound": {
+          "title": "Bound",
+          "type": "string"
+        },
+        "flag": {
+          "anyOf": [
+            {
+              "enum": [
+                "insufficient_n",
+                "upper_gt_2alpha"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Flag"
+        },
+        "n": {
+          "title": "N",
+          "type": "integer"
+        },
+        "risk": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Risk"
+        },
+        "slice": {
+          "title": "Slice",
+          "type": "string"
+        },
+        "upper95": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Upper95"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slice",
+        "value",
+        "n",
+        "risk",
+        "upper95",
+        "bound",
+        "flag"
+      ],
+      "title": "SliceEntry",
+      "type": "object"
+    },
+    "StopReason": {
+      "enum": [
+        "end_of_grid",
+        "risk_limited",
+        "sample_size_limited",
+        "infeasible_on_dev"
+      ],
+      "title": "StopReason",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "amx_version": {
+      "title": "Amx Version",
+      "type": "string"
+    },
+    "artifact_hash": {
+      "title": "Artifact Hash",
+      "type": "string"
+    },
+    "bands": {
+      "items": {
+        "$ref": "#/$defs/BandEntry"
+      },
+      "title": "Bands",
+      "type": "array"
+    },
+    "diagnostics": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Diagnostics",
+      "type": "object"
+    },
+    "frontier_descriptive": {
+      "items": {
+        "$ref": "#/$defs/FrontierPoint"
+      },
+      "title": "Frontier Descriptive",
+      "type": "array"
+    },
+    "guarantee": {
+      "$ref": "#/$defs/Guarantee"
+    },
+    "never_claimed": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Never Claimed",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "taskspec_hash": {
+      "title": "Taskspec Hash",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "amx_version",
+    "run_id",
+    "taskspec_hash",
+    "artifact_hash",
+    "guarantee",
+    "bands",
+    "frontier_descriptive",
+    "warnings",
+    "never_claimed"
+  ],
+  "title": "Certificate",
+  "type": "object"
+}
