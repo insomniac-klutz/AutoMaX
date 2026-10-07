@@ -1,0 +1,21 @@
+spec_version: 1
+name: california-housing
+data:
+  uri: loader.py
+  format: custom
+  unit_id: row_id
+  target: {name: median_house_value, kind: numeric}
+task:
+  family: regression
+  commit_unit: row
+  loss: {kind: builtin, name: err_gt_tol, params: {tol: 0.25, relative: true}}
+bands:
+  alphas: [0.05, 0.10, 0.20]
+  policies: [auto, audit, audit]
+  delta: 0.10
+  watch_slices:
+    - {name: by_target, by: target}
+splits:
+  regime: iid
+  fractions: {dev: 0.6, calib: 0.2, sealed: 0.2}
+  seed: 20261007

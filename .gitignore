@@ -224,3 +224,6 @@ runs/
 .amx/
 *.parquet
 !tests/fixtures/**/*.parquet
+
+# Claude Code worktrees
+.claude/worktrees/

@@ -1,0 +1,23 @@
+spec_version: 1
+name: adult
+data:
+  uri: loader.py
+  format: custom
+  unit_id: row_id
+  target: {name: class, kind: categorical}
+task:
+  family: classification
+  commit_unit: row
+  loss: {kind: builtin, name: zero_one}
+bands:
+  alphas: [0.01, 0.02, 0.05, 0.10]
+  policies: [auto, auto, audit, audit]
+  delta: 0.10
+  watch_slices:
+    - {name: by_target, by: target}
+    - {name: by_sex, by: sex}
+    - {name: by_race, by: race}
+splits:
+  regime: iid
+  fractions: {dev: 0.6, calib: 0.2, sealed: 0.2}
+  seed: 20261007
